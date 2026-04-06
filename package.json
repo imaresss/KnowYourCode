@@ -1,0 +1,94 @@
+{
+  "name": "know-your-code",
+  "displayName": "Know Your Code",
+  "description": "Explain the current function, connected calls, and cached code understanding inside VS Code.",
+  "version": "0.1.0",
+  "publisher": "genbanext",
+  "private": true,
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:knowYourCode.explainCurrentFunction",
+    "onCommand:knowYourCode.explainCurrentLine",
+    "onCommand:knowYourCode.refreshExplanation",
+    "onCommand:knowYourCode.showConnectedCalls"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "knowYourCode.explainCurrentFunction",
+        "title": "Know Your Code: Explain Current Function"
+      },
+      {
+        "command": "knowYourCode.explainCurrentLine",
+        "title": "Know Your Code: Explain Current Line"
+      },
+      {
+        "command": "knowYourCode.refreshExplanation",
+        "title": "Know Your Code: Refresh Explanation"
+      },
+      {
+        "command": "knowYourCode.showConnectedCalls",
+        "title": "Know Your Code: Show Connected Calls"
+      }
+    ],
+    "configuration": {
+      "title": "Know Your Code",
+      "properties": {
+        "knowYourCode.providerMode": {
+          "type": "string",
+          "enum": [
+            "local",
+            "cloud"
+          ],
+          "default": "local",
+          "description": "Choose a single explanation provider mode for this extension instance."
+        },
+        "knowYourCode.modelName": {
+          "type": "string",
+          "default": "claude-haiku-4-5-20251001",
+          "description": "Model name used by the configured provider."
+        },
+        "knowYourCode.localEndpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:11434/api/generate",
+          "description": "Local model endpoint, for example Ollama's generate API."
+        },
+        "knowYourCode.cloudEndpoint": {
+          "type": "string",
+          "default": "https://api.anthropic.com/v1/messages",
+          "description": "Cloud inference endpoint."
+        },
+        "knowYourCode.apiKey": {
+          "type": "string",
+          "default": "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",
+          "markdownDescription": "API key for the cloud provider. Prefer storing secrets in VS Code secret storage later."
+        },
+        "knowYourCode.prefetchConnectedCalls": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prefetch explanations for direct callees after explaining the current function."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "lint": "tsc -p ./ --noEmit",
+    "test": "npm run build && node --test tests/*.test.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/vscode": "^1.96.0",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "sql.js": "^1.13.0"
+  }
+}
