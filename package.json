@@ -66,7 +66,7 @@
         },
         "knowYourCode.apiKey": {
           "type": "string",
-          "default": "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",
+          "default": "",
           "markdownDescription": "API key for the cloud provider. Prefer storing secrets in VS Code secret storage later."
         },
         "knowYourCode.prefetchConnectedCalls": {
