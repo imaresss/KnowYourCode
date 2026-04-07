@@ -11,6 +11,7 @@ import { createShowContextActionsCommand } from "./commands/showContextActions";
 import { createSwitchProviderCommand } from "./commands/switchProvider";
 import { createSetApiKeyCommand } from "./commands/setApiKey";
 import { getConfig } from "./core/config";
+import { LastActionRunner } from "./core/lastAction";
 import { ExplanationOrchestrator } from "./core/orchestrator";
 import { ModelSelectionService } from "./providers/modelSelector";
 import { ContextActionCodeLensProvider } from "./ui/contextActionCodeLensProvider";
@@ -25,14 +26,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const panel = new ExplanationPanel();
   const modelSelector = new ModelSelectionService(context, () => config);
   const codeLensProvider = new ContextActionCodeLensProvider(() => config);
+  let lastActionRunner: LastActionRunner | undefined;
 
   panel.onMessage((message) => {
     switch (message.type) {
       case "regenerate":
-        void vscode.commands.executeCommand("knowYourCode.refreshExplanation");
+        if (lastActionRunner) {
+          void lastActionRunner.rerun("regenerate");
+        } else {
+          void vscode.commands.executeCommand("knowYourCode.refreshExplanation");
+        }
         break;
       case "switchProvider":
-        void vscode.commands.executeCommand("knowYourCode.switchProvider");
+        if (lastActionRunner) {
+          void lastActionRunner.rerun("switchModel");
+        } else {
+          void vscode.commands.executeCommand("knowYourCode.switchProvider");
+        }
         break;
     }
   });
@@ -40,23 +50,31 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "knowYourCode.explainFunction",
-      createExplainCurrentFunctionCommand(orchestrator, modelSelector, panel)
+      createExplainCurrentFunctionCommand(orchestrator, modelSelector, panel, (runner) => {
+        lastActionRunner = runner;
+      })
     ),
     vscode.commands.registerCommand(
       "knowYourCode.explainLine",
-      createExplainCurrentLineCommand(orchestrator, modelSelector, panel)
+      createExplainCurrentLineCommand(orchestrator, modelSelector, panel, (runner) => {
+        lastActionRunner = runner;
+      })
     ),
     vscode.commands.registerCommand(
       "knowYourCode.explainCallFlow",
-      createExplainCallFlowCommand(orchestrator, modelSelector, panel)
+      createExplainCallFlowCommand(orchestrator, modelSelector, panel, (runner) => {
+        lastActionRunner = runner;
+      })
     ),
     vscode.commands.registerCommand(
       "knowYourCode.refreshExplanation",
-      createRefreshExplanationCommand(orchestrator, modelSelector, panel)
+      createRefreshExplanationCommand(orchestrator, modelSelector, panel, () => lastActionRunner)
     ),
     vscode.commands.registerCommand(
       "knowYourCode.runContextAction",
-      createRunContextActionCommand(orchestrator, modelSelector, panel)
+      createRunContextActionCommand(orchestrator, modelSelector, panel, (runner) => {
+        lastActionRunner = runner;
+      })
     ),
     vscode.commands.registerCommand(
       "knowYourCode.showConnectedCalls",

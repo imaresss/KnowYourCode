@@ -31,9 +31,8 @@ Switch between providers dynamically without restarting.
 - Modern, theme-aware explanation panel
 - Copy explanation to clipboard
 - Regenerate with one click
-- Switch AI provider from the panel
+- Switch AI model from the panel
 - Loading spinner during AI calls
-- Confidence indicator with visual bar
 
 ---
 
@@ -63,7 +62,14 @@ Open the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run:
 KYC: Set API Key
 ```
 
-Select a provider and enter your API key. Or configure via Settings:
+Select a provider (OpenAI/Claude/Gemini) and enter your API key.
+
+After API key setup:
+- KYC auto-picks your **default model** for each explain action.
+- You do **not** need to select a model every time.
+- If you want to change the default model, run **KYC: Switch AI Model**.
+
+You can also configure defaults in Settings:
 
 | Setting | Default |
 |---------|---------|
@@ -75,12 +81,32 @@ Select a provider and enter your API key. Or configure via Settings:
 | `knowYourCode.gemini.apiKey` | *(empty)* |
 | `knowYourCode.gemini.modelName` | `gemini-2.0-flash` |
 
-### 5. Explain Some Code
+### 5. Explain Code
 
 Place your cursor inside a function and:
 - Right-click → **KYC: Explain Function**
 - Or use `Cmd+Shift+E` / `Ctrl+Shift+E`
 - Or open the command palette → **KYC: Explain Function**
+
+Other explain options:
+- **KYC: Explain Line** for the current line
+- **KYC: Explain Call Flow** for call-chain analysis
+- **KYC: Show Context Actions** to run selection-based actions
+
+### 6. Change Default Model (Optional)
+
+Run:
+
+```
+KYC: Switch AI Model
+```
+
+Then pick provider + model. KYC saves this as your default and uses it for future explain actions.
+
+### 7. Regenerate Fresh Output
+
+- Click **Regenerate** in the panel, or run **KYC: Regenerate Explanation**
+- Regenerate always makes a fresh AI call (bypasses cache)
 
 ---
 
@@ -93,10 +119,66 @@ Place your cursor inside a function and:
 | KYC: Explain Call Flow | `Cmd+Shift+F` | Trace execution flow |
 | KYC: Regenerate Explanation | — | Force fresh AI call |
 | KYC: Show Connected Calls | — | View callers/callees graph |
-| KYC: Switch AI Provider | — | Change active provider |
+| KYC: Switch AI Model | — | Change default provider/model |
 | KYC: Set API Key | — | Configure provider API key |
 
 All explain commands are also available via right-click context menu.
+
+---
+
+## Usage Reference
+
+### Explain Actions
+- **KYC: Explain Function** - Explains the function/method at cursor with summary, purpose, steps, inputs, outputs, and dependencies.
+- **KYC: Explain Line** - Explains only the current line in context of the enclosing function.
+- **KYC: Explain Call Flow** - Describes execution flow, data flow, entry/exit points, and side effects.
+- **KYC: Show Context Actions** - Opens selection-aware actions such as explain selected code, summarize selection, find issues, and optimize function.
+- **KYC: Run Context Action** - Internal command used by context actions (normally triggered through Show Context Actions).
+- **KYC: Show Connected Calls** - Shows callers, callees, and cached call graph links for the current function.
+
+### Model and Provider Actions
+- **KYC: Set API Key** - First setup step for OpenAI, Claude, or Gemini. If API key is missing, KYC prompts you to set it.
+- **KYC: Switch AI Model** - Lets you choose provider + model and saves it as your default model.
+- **Default model behavior** - Once a default is set, KYC uses it automatically for explain actions (no repeated model prompt).
+- **Default marker in picker** - In model list, the default entry is shown with `Default` before the model name.
+
+### Regenerate and Cache
+- **KYC: Regenerate Explanation** - Always runs a fresh AI call for the last explanation context (bypasses cache).
+- **Panel cache badges**:
+  - `Cached (ModelName)` = result returned from cache
+  - `Generated (ModelName)` = freshly generated from provider API
+
+### Explanation Panel Buttons
+- **Copy** - Copies current explanation text.
+- **Regenerate** - Same behavior as regenerate command (fresh call).
+- **Switch Model** - Re-runs the same last explanation using a new model and updates default model.
+
+### Key Settings (`knowYourCode.*`)
+- **Provider defaults**
+  - `activeProvider`
+  - `openai.modelName`
+  - `claude.modelName`
+  - `gemini.modelName`
+  - `localModelName`
+- **API keys**
+  - `openai.apiKey`
+  - `claude.apiKey`
+  - `gemini.apiKey`
+- **Enable/disable providers**
+  - `openai.enabled`
+  - `claude.enabled`
+  - `gemini.enabled`
+  - `localEnabled`
+- **Endpoints**
+  - `openai.endpoint`
+  - `claude.endpoint`
+  - `gemini.endpoint`
+  - `localEndpoint`
+- **Performance and UX**
+  - `cacheTtlSeconds`
+  - `prefetchConnectedCalls`
+  - `selectionDebounceMs`
+  - `inlineActionsEnabled`
 
 ---
 
@@ -194,8 +276,7 @@ Your explanations must be:
   4. Actionable (help the reader understand AND modify the code confidently)
 
 Return ONLY valid JSON with keys:
-  summary, purpose, stepByStep, inputs, outputs,
-  dependencies, risks, connectedFlow, confidence
+  summary, purpose, stepByStep, inputs, outputs, dependencies
 
 --- CODE CONTEXT ---
 Function: saveOrder

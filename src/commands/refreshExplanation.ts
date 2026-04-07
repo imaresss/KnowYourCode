@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { buildFallbackExplanation } from "../core/fallbackExplanation";
 import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
 import { resolveCurrentSymbolContext } from "../intelligence/symbolResolver";
+import { LastActionRunner } from "../core/lastAction";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
 import { ModelSelectionService } from "../providers/modelSelector";
@@ -11,9 +12,16 @@ import { formatExplanationMarkdown } from "../ui/formatter";
 export function createRefreshExplanationCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
-  panel: ExplanationPanel
+  panel: ExplanationPanel,
+  getLastActionRunner: () => LastActionRunner | undefined
 ): () => Promise<void> {
   return async () => {
+    const lastRunner = getLastActionRunner();
+    if (lastRunner) {
+      await lastRunner.rerun("regenerate");
+      return;
+    }
+
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       void vscode.window.showInformationMessage("Open a file first to refresh the current function explanation.");
@@ -47,7 +55,7 @@ export function createRefreshExplanationCommand(
           void orchestrator.prefetchConnectedContexts(context, selection);
           panel.show(
             `KYC: ${context.symbolName} (refreshed)`,
-            formatExplanationMarkdown(result),
+            formatExplanationMarkdown(result, context.code, context.range.startLine),
             {
               provider: meta.providerLabel,
               modelName: meta.modelName,
@@ -60,7 +68,7 @@ export function createRefreshExplanationCommand(
           const fallback = buildFallbackExplanation(context, friendly);
           panel.show(
             `KYC: ${context.symbolName} (fallback)`,
-            formatExplanationMarkdown(fallback),
+            formatExplanationMarkdown(fallback, context.code, context.range.startLine),
             { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
           );
           void vscode.window.showWarningMessage(friendly);

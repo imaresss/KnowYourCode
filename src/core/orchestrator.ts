@@ -3,16 +3,19 @@ import { ExtensionConfig } from "./config";
 import {
   ConnectedCallsSnapshot,
   ExplainCallFlowInput,
+  ExplainCallFlowOptions,
   ExplainCallFlowResult,
   ExplainFunctionInput,
   ExplainFunctionOptions,
   ExplainFunctionResult,
   ExplainLineInput,
+  ExplainLineOptions,
   ExplainLineResult,
   ExplanationLookup,
   ExplanationPresentation,
   ExplanationResponse,
   GenericMarkdownResult,
+  RunContextActionOptions,
   SelectedModel,
   StoredExplanation,
   StreamCallbacks,
@@ -87,7 +90,8 @@ export class ExplanationOrchestrator {
 
   public async explainLine(
     input: ExplainLineInput,
-    selection: SelectedModel
+    selection: SelectedModel,
+    options: ExplainLineOptions = {}
   ): Promise<ExplanationResponse<ExplainLineResult>> {
     const symbolKey = `line::${input.filePath}::${input.lineNumber}`;
     const lookup: ExplanationLookup = {
@@ -99,7 +103,9 @@ export class ExplanationOrchestrator {
       promptVersion: this.config.promptVersion
     };
 
-    const existing = this.repo.findValid(lookup, this.getCacheTtlMs());
+    const existing = options.forceRefresh
+      ? undefined
+      : this.repo.findValid(lookup, this.getCacheTtlMs());
 
     if (existing) {
       return {
@@ -129,7 +135,8 @@ export class ExplanationOrchestrator {
 
   public async explainCallFlow(
     input: ExplainCallFlowInput,
-    selection: SelectedModel
+    selection: SelectedModel,
+    options: ExplainCallFlowOptions = {}
   ): Promise<ExplanationResponse<ExplainCallFlowResult>> {
     const symbolKey = `callflow::${input.filePath}::${input.symbolName}`;
     const lookup: ExplanationLookup = {
@@ -141,7 +148,9 @@ export class ExplanationOrchestrator {
       promptVersion: this.config.promptVersion
     };
 
-    const existing = this.repo.findValid(lookup, this.getCacheTtlMs());
+    const existing = options.forceRefresh
+      ? undefined
+      : this.repo.findValid(lookup, this.getCacheTtlMs());
 
     if (existing) {
       return {
@@ -176,7 +185,7 @@ export class ExplanationOrchestrator {
     dependencyHash?: string;
     prompt: string;
     selection: SelectedModel;
-  }): Promise<ExplanationResponse<GenericMarkdownResult>> {
+  }, options: RunContextActionOptions = {}): Promise<ExplanationResponse<GenericMarkdownResult>> {
     const lookup: ExplanationLookup = {
       symbolKey: `contextAction::${input.actionId}::${input.key}`,
       contentHash: input.contentHash,
@@ -186,7 +195,9 @@ export class ExplanationOrchestrator {
       promptVersion: this.config.promptVersion
     };
 
-    const existing = this.repo.findValid(lookup, this.getCacheTtlMs());
+    const existing = options.forceRefresh
+      ? undefined
+      : this.repo.findValid(lookup, this.getCacheTtlMs());
     if (existing) {
       return {
         result: existing.result as GenericMarkdownResult,
@@ -289,7 +300,7 @@ export class ExplanationOrchestrator {
   private buildPresentation(cacheHit: boolean, record: StoredExplanation): ExplanationPresentation {
     return {
       cacheHit,
-      cacheLabel: `${cacheHit ? "Cached" : "Generated"} (${record.modelName})`,
+      cacheLabel: `${cacheHit ? "Cached" : "Generated"}`,
       modelName: record.modelName,
       provider: record.provider,
       providerLabel: PROVIDER_DISPLAY_NAMES[record.provider],

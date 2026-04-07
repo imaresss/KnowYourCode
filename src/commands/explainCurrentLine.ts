@@ -2,18 +2,20 @@ import * as vscode from "vscode";
 import { resolveCurrentSymbolContext } from "../intelligence/symbolResolver";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
+import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatLineExplanationMarkdown } from "../ui/formatter";
-import { ExplainLineInput } from "../core/types";
+import { ExplainLineInput, SelectedModel } from "../core/types";
 import { sha256 } from "../utils/hash";
 
 export function createExplainCurrentLineCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
-  panel: ExplanationPanel
+  panel: ExplanationPanel,
+  setLastActionRunner: (runner: LastActionRunner | undefined) => void
 ) {
-  return async () => {
+  return async (options?: { forceRefresh?: boolean; selectionOverride?: SelectedModel }) => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       return;
@@ -42,13 +44,33 @@ export function createExplainCurrentLineCommand(
       imports,
       contentHash: sha256(lineText)
     };
-    const selection = await modelSelector.pickModel({
+    const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
       placeHolder: `Choose a model to explain line ${lineNumber}`
     });
     if (!selection) {
       return;
     }
+
+    setLastActionRunner({
+      rerun: async (intent: RerunIntent) => {
+        const rerunSelection = intent === "switchModel"
+          ? await modelSelector.pickModel({
+            title: "KYC: Switch AI Model",
+            placeHolder: `Choose a default model to re-explain line ${lineNumber}`,
+            forcePrompt: true,
+            persistAsDefault: true
+          })
+          : selection;
+        if (!rerunSelection) {
+          return;
+        }
+        await vscode.commands.executeCommand("knowYourCode.explainLine", {
+          forceRefresh: true,
+          selectionOverride: rerunSelection
+        });
+      }
+    });
 
     await vscode.window.withProgress(
       {
@@ -58,7 +80,9 @@ export function createExplainCurrentLineCommand(
       },
       async () => {
         try {
-          const { result, meta } = await orchestrator.explainLine(input, selection);
+          const { result, meta } = await orchestrator.explainLine(input, selection, {
+            forceRefresh: options?.forceRefresh
+          });
           const markdown = formatLineExplanationMarkdown(result, lineText, lineNumber, enclosingName);
           panel.show(
             `KYC: Line ${lineNumber}${meta.cacheHit ? " (cached)" : ""}`,

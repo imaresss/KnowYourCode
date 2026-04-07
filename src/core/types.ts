@@ -143,6 +143,18 @@ export interface ExplainFunctionOptions {
   forceRefresh?: boolean;
 }
 
+export interface ExplainLineOptions {
+  forceRefresh?: boolean;
+}
+
+export interface ExplainCallFlowOptions {
+  forceRefresh?: boolean;
+}
+
+export interface RunContextActionOptions {
+  forceRefresh?: boolean;
+}
+
 export interface ConnectedCallsSnapshot {
   symbolName: string;
   filePath: string;

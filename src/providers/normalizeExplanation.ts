@@ -147,8 +147,90 @@ function tryParseJsonFromString(text: string): unknown | undefined {
   try {
     return JSON.parse(t) as unknown;
   } catch {
+    const repaired = repairLikelyJson(t);
+    if (repaired !== t) {
+      try {
+        return JSON.parse(repaired) as unknown;
+      } catch {
+        return undefined;
+      }
+    }
     return undefined;
   }
+}
+
+function repairLikelyJson(value: string): string {
+  let repaired = value
+    .replace(/[\u201C\u201D]/g, "\"")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\r\n/g, "\n")
+    .replace(/,\s*([}\]])/g, "$1");
+
+  repaired = normalizeSingleQuotedPairs(repaired);
+  repaired = escapeUnterminatedInnerQuotes(repaired);
+  return repaired;
+}
+
+function normalizeSingleQuotedPairs(value: string): string {
+  // Converts simple single-quoted keys/values to double-quoted JSON-safe text.
+  return value.replace(/'([^'\\]*(?:\\.[^'\\]*)*)'/g, (_match, group) => {
+    const normalized = String(group).replace(/"/g, "\\\"");
+    return `"${normalized}"`;
+  });
+}
+
+function escapeUnterminatedInnerQuotes(value: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if (!inString) {
+      out += char;
+      if (char === "\"") {
+        inString = true;
+      }
+      continue;
+    }
+
+    if (escaped) {
+      out += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      out += char;
+      escaped = true;
+      continue;
+    }
+
+    if (char === "\"") {
+      const next = nextNonWhitespaceChar(value, i + 1);
+      if (next === "," || next === "}" || next === "]" || next === ":" || next === undefined) {
+        out += char;
+        inString = false;
+      } else {
+        out += "\\\"";
+      }
+      continue;
+    }
+
+    out += char;
+  }
+
+  return out;
+}
+
+function nextNonWhitespaceChar(value: string, start: number): string | undefined {
+  for (let i = start; i < value.length; i += 1) {
+    const char = value[i];
+    if (!/\s/.test(char)) {
+      return char;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -253,6 +335,22 @@ function formatStructuredItem(item: unknown): string {
   }
 
   const o = item as Record<string, unknown>;
+
+  if (("line" in o || "startLine" in o || "endLine" in o) && ("text" in o || "explanation" in o || "detail" in o)) {
+    const line = o.line;
+    const startLine = o.startLine;
+    const endLine = o.endLine;
+    const text = o.text ?? o.explanation ?? o.detail ?? "";
+
+    const lineLabel = typeof line === "number"
+      ? `L${line}`
+      : (typeof startLine === "number" && typeof endLine === "number")
+        ? `L${startLine}-${endLine}`
+        : "";
+
+    const body = String(text).trim();
+    return `${lineLabel ? `${lineLabel}: ` : ""}${body}`.trim();
+  }
 
   if ("risk" in o || "category" in o || "severity" in o || "fix" in o) {
     const parts: string[] = [];

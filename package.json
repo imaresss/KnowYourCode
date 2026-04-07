@@ -73,7 +73,7 @@
       },
       {
         "command": "knowYourCode.switchProvider",
-        "title": "KYC: Switch AI Model",
+        "title": "KYC: Switch Default AI Model",
         "category": "Know Your Code"
       },
       {

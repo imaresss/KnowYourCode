@@ -4,6 +4,8 @@ import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
 import { resolveCurrentSymbolContext } from "../intelligence/symbolResolver";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
+import { LastActionRunner, RerunIntent } from "../core/lastAction";
+import { SelectedModel } from "../core/types";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatExplanationMarkdown } from "../ui/formatter";
@@ -11,9 +13,10 @@ import { formatExplanationMarkdown } from "../ui/formatter";
 export function createExplainCurrentFunctionCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
-  panel: ExplanationPanel
+  panel: ExplanationPanel,
+  setLastActionRunner: (runner: LastActionRunner | undefined) => void
 ) {
-  return async () => {
+  return async (options?: { forceRefresh?: boolean; selectionOverride?: SelectedModel }) => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       void vscode.window.showInformationMessage("Open a file first to explain the current function.");
@@ -27,13 +30,33 @@ export function createExplainCurrentFunctionCommand(
     }
 
     const input = buildExplainFunctionInput(context);
-    const selection = await modelSelector.pickModel({
+    const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
       placeHolder: `Choose a model to explain ${context.symbolName}`
     });
     if (!selection) {
       return;
     }
+
+    setLastActionRunner({
+      rerun: async (intent: RerunIntent) => {
+        const rerunSelection = intent === "switchModel"
+          ? await modelSelector.pickModel({
+            title: "KYC: Switch AI Model",
+            placeHolder: `Choose a default model to re-explain ${context.symbolName}`,
+            forcePrompt: true,
+            persistAsDefault: true
+          })
+          : selection;
+        if (!rerunSelection) {
+          return;
+        }
+        await vscode.commands.executeCommand("knowYourCode.explainFunction", {
+          forceRefresh: true,
+          selectionOverride: rerunSelection
+        });
+      }
+    });
 
     await vscode.window.withProgress(
       {
@@ -43,9 +66,11 @@ export function createExplainCurrentFunctionCommand(
       },
       async () => {
         try {
-          const { result, meta } = await orchestrator.explainFunction(input, selection);
+          const { result, meta } = await orchestrator.explainFunction(input, selection, {
+            forceRefresh: options?.forceRefresh
+          });
           void orchestrator.prefetchConnectedContexts(context, selection);
-          const markdown = formatExplanationMarkdown(result);
+          const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine);
           panel.show(
             `KYC: ${context.symbolName}${meta.cacheHit ? " (cached)" : ""}`,
             markdown,
@@ -61,7 +86,7 @@ export function createExplainCurrentFunctionCommand(
           const fallback = buildFallbackExplanation(context, friendly);
           panel.show(
             `KYC: ${context.symbolName} (fallback)`,
-            formatExplanationMarkdown(fallback),
+            formatExplanationMarkdown(fallback, context.code, context.range.startLine),
             { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
           );
           void vscode.window.showWarningMessage(friendly);

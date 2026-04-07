@@ -7,7 +7,11 @@ import {
   RelatedSymbol
 } from "../core/types";
 
-export function formatExplanationMarkdown(result: ExplainFunctionResult): string {
+export function formatExplanationMarkdown(
+  result: ExplainFunctionResult,
+  _code?: string,
+  _startLine?: number
+): string {
   const sections: string[] = [];
 
   sections.push(`# ${result.summary}`);
@@ -17,7 +21,7 @@ export function formatExplanationMarkdown(result: ExplainFunctionResult): string
 
   sections.push("## Step-by-Step Walkthrough");
   const steps = result.stepByStep.length ? result.stepByStep : ["No detailed execution steps were returned."];
-  sections.push(steps.map((s, i) => `${i + 1}. ${s}`).join("\n"));
+  sections.push(steps.map((s, i) => `${i + 1}. ${formatStepWithLineNumber(s)}`).join("\n"));
 
   sections.push("## Inputs");
   const inputs = result.inputs.length ? result.inputs : ["No explicit inputs were identified."];
@@ -30,18 +34,6 @@ export function formatExplanationMarkdown(result: ExplainFunctionResult): string
   sections.push("## Dependencies");
   const deps = result.dependencies.length ? result.dependencies : ["No direct dependencies were identified."];
   sections.push(deps.map((item) => `- ${item}`).join("\n"));
-
-  sections.push("## Connected Flow");
-  const flow = result.connectedFlow.length ? result.connectedFlow : ["No connected flow details were returned."];
-  sections.push(flow.map((item) => `- ${item}`).join("\n"));
-
-  sections.push("## Risks & Edge Cases");
-  const risks = result.risks.length ? result.risks : ["No obvious risks were identified."];
-  sections.push(risks.map((item) => `- ⚠ ${item}`).join("\n"));
-
-  const confidencePct = Math.round(result.confidence * 100);
-  const bar = "█".repeat(Math.round(confidencePct / 5)) + "░".repeat(20 - Math.round(confidencePct / 5));
-  sections.push(`---\n**Confidence:** ${bar} ${confidencePct}%`);
 
   return sections.join("\n\n");
 }
@@ -105,12 +97,18 @@ export function formatCallFlowMarkdown(
     sections.push(result.sideEffects.map((s) => `- ⚡ ${s}`).join("\n"));
   }
 
-  if (result.edgeCases.length) {
-    sections.push("## Edge Cases");
-    sections.push(result.edgeCases.map((e) => `- ⚠ ${e}`).join("\n"));
-  }
-
   return sections.join("\n\n");
+}
+
+function formatStepWithLineNumber(step: string): string {
+  const s = String(step ?? "").trim();
+  const match = s.match(/^(L\d+(?:-\d+)?):\s*(.+)$/i);
+  if (!match) {
+    return s;
+  }
+  const line = match[1].toUpperCase();
+  const rest = match[2];
+  return `**${line}**: ${rest}`;
 }
 
 export function formatConnectedCallsMarkdown(snapshot: ConnectedCallsSnapshot): string {

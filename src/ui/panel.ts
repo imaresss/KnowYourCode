@@ -311,7 +311,7 @@ const CSS = `
   }
 
   .title {
-    font-size: 1.5em;
+    font-size: 1.25em;
     font-weight: 600;
     margin: 0 0 12px;
     color: var(--accent);
@@ -320,7 +320,7 @@ const CSS = `
   }
 
   .section-title {
-    font-size: 1.1em;
+    font-size: 1em;
     font-weight: 600;
     margin: 20px 0 8px;
     color: var(--warning);

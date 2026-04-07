@@ -4,17 +4,19 @@ import { resolveCurrentSymbolContext } from "../intelligence/symbolResolver";
 import { buildContentHash, buildDependencyHash } from "../intelligence/fingerprint";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
+import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatCallFlowMarkdown, formatExplanationMarkdown } from "../ui/formatter";
-import { ExplainCallFlowInput } from "../core/types";
+import { ExplainCallFlowInput, SelectedModel } from "../core/types";
 
 export function createExplainCallFlowCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
-  panel: ExplanationPanel
+  panel: ExplanationPanel,
+  setLastActionRunner: (runner: LastActionRunner | undefined) => void
 ) {
-  return async () => {
+  return async (options?: { forceRefresh?: boolean; selectionOverride?: SelectedModel }) => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       void vscode.window.showInformationMessage("Open a file first to explain the call flow.");
@@ -39,13 +41,33 @@ export function createExplainCallFlowCommand(
       contentHash: buildContentHash(context),
       dependencyHash: buildDependencyHash(context)
     };
-    const selection = await modelSelector.pickModel({
+    const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
       placeHolder: `Choose a model to analyze ${context.symbolName}`
     });
     if (!selection) {
       return;
     }
+
+    setLastActionRunner({
+      rerun: async (intent: RerunIntent) => {
+        const rerunSelection = intent === "switchModel"
+          ? await modelSelector.pickModel({
+            title: "KYC: Switch AI Model",
+            placeHolder: `Choose a default model to re-analyze ${context.symbolName}`,
+            forcePrompt: true,
+            persistAsDefault: true
+          })
+          : selection;
+        if (!rerunSelection) {
+          return;
+        }
+        await vscode.commands.executeCommand("knowYourCode.explainCallFlow", {
+          forceRefresh: true,
+          selectionOverride: rerunSelection
+        });
+      }
+    });
 
     await vscode.window.withProgress(
       {
@@ -55,7 +77,9 @@ export function createExplainCallFlowCommand(
       },
       async () => {
         try {
-          const { result, meta } = await orchestrator.explainCallFlow(input, selection);
+          const { result, meta } = await orchestrator.explainCallFlow(input, selection, {
+            forceRefresh: options?.forceRefresh
+          });
           const markdown = formatCallFlowMarkdown(result, context.symbolName);
           panel.show(
             `KYC: Call Flow — ${context.symbolName}${meta.cacheHit ? " (cached)" : ""}`,

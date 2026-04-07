@@ -2,16 +2,24 @@ import * as vscode from "vscode";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { ExplanationPanel } from "../ui/panel";
 import { buildContextActionPrompt, KycActionId } from "../context/actionRegistry";
-import { resolveInteractionContext } from "../context/interactionContext";
+import { KycInteractionContext, resolveInteractionContext } from "../context/interactionContext";
 import { formatProviderError } from "../core/providerErrors";
+import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { ModelSelectionService } from "../providers/modelSelector";
+import { SelectedModel } from "../core/types";
+import { normalizeExplanationResult, parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
+import { formatExplanationMarkdown } from "../ui/formatter";
 
 export function createRunContextActionCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
-  panel: ExplanationPanel
+  panel: ExplanationPanel,
+  setLastActionRunner: (runner: LastActionRunner | undefined) => void
 ) {
-  return async (actionId: KycActionId) => {
+  return async (
+    actionId: KycActionId,
+    options?: { forceRefresh?: boolean; selectionOverride?: SelectedModel }
+  ) => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
       void vscode.window.showInformationMessage("Open a file first to use KYC actions.");
@@ -25,7 +33,7 @@ export function createRunContextActionCommand(
     }
 
     const prompt = buildContextActionPrompt(actionId, context);
-    const selection = await modelSelector.pickModel({
+    const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
       placeHolder: `Choose a model for ${actionLabel(actionId)}`
     });
@@ -33,8 +41,34 @@ export function createRunContextActionCommand(
       return;
     }
 
-    panel.showLoading(`KYC: ${actionLabel(actionId)}`, selection.providerLabel, selection.modelName);
+    setLastActionRunner({
+      rerun: async (intent: RerunIntent) => {
+        const rerunSelection = intent === "switchModel"
+          ? await modelSelector.pickModel({
+            title: "KYC: Switch AI Model",
+            placeHolder: `Choose a default model for ${actionLabel(actionId)}`,
+            forcePrompt: true,
+            persistAsDefault: true
+          })
+          : selection;
+        if (!rerunSelection) {
+          return;
+        }
+        await runAction(context, prompt, actionId, rerunSelection, true);
+      }
+    });
 
+    await runAction(context, prompt, actionId, selection, options?.forceRefresh === true);
+  };
+
+  async function runAction(
+    context: KycInteractionContext,
+    prompt: string,
+    actionId: KycActionId,
+    selection: SelectedModel,
+    forceRefresh: boolean
+  ): Promise<void> {
+    panel.showLoading(`KYC: ${actionLabel(actionId)}`, selection.providerLabel, selection.modelName);
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -50,11 +84,11 @@ export function createRunContextActionCommand(
             dependencyHash: context.dependencyHash,
             prompt,
             selection
-          });
+          }, { forceRefresh });
 
           panel.show(
             `KYC: ${actionLabel(actionId)}`,
-            result.markdown,
+            renderPossiblyJsonExplanation(result.markdown),
             {
               provider: meta.providerLabel,
               modelName: meta.modelName,
@@ -73,7 +107,23 @@ export function createRunContextActionCommand(
         }
       }
     );
-  };
+  }
+}
+
+function renderPossiblyJsonExplanation(markdownOrJson: string): string {
+  const raw = String(markdownOrJson ?? "").trim();
+  if (!raw) {
+    return raw;
+  }
+
+  // If the model returned an explain-function shaped JSON object, render it using the standard formatter.
+  const parsed = parseJsonObjectFromModelText<Record<string, unknown>>(raw);
+  if (parsed && (("summary" in parsed) || ("purpose" in parsed) || ("stepByStep" in parsed))) {
+    const normalized = normalizeExplanationResult(parsed);
+    return formatExplanationMarkdown(normalized);
+  }
+
+  return raw;
 }
 
 function actionLabel(actionId: KycActionId): string {
