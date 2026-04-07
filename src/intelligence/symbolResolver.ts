@@ -23,6 +23,29 @@ export async function resolveCurrentSymbolContext(
   editor: vscode.TextEditor
 ): Promise<SymbolContext | undefined> {
   const document = editor.document;
+  const selection = editor.selection;
+
+  // Path 1: If user has explicitly selected code, use that directly
+  if (!selection.isEmpty) {
+    return buildSelectionContext(document, selection);
+  }
+
+  // Path 2: Use VS Code's document symbol provider (language server)
+  const symbolTree = await getDocumentSymbols(document.uri);
+  const symbolPath = findInnermostSymbolPath(symbolTree, selection.active.line);
+  if (symbolPath.length) {
+    return buildSymbolContext(document, symbolPath);
+  }
+
+  // Path 3: Text-based fallback for languages without symbol providers,
+  //          or when the LS hasn't initialized yet
+  return buildFallbackSymbolContext(document, selection.active.line);
+}
+
+export async function resolveEnclosingSymbolContext(
+  editor: vscode.TextEditor
+): Promise<SymbolContext | undefined> {
+  const document = editor.document;
   const symbolTree = await getDocumentSymbols(document.uri);
   const symbolPath = findInnermostSymbolPath(symbolTree, editor.selection.active.line);
   if (symbolPath.length) {
@@ -61,6 +84,54 @@ export async function resolveConnectedSymbolContexts(
 
   return contexts;
 }
+
+// --- Path 1: Selection-based context ---
+
+async function buildSelectionContext(
+  document: vscode.TextDocument,
+  selection: vscode.Selection
+): Promise<SymbolContext | undefined> {
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+  if (!workspaceFolder) {
+    return undefined;
+  }
+
+  const code = document.getText(selection).trim();
+  if (!code) {
+    return undefined;
+  }
+
+  const symbolName = extractAnyFunctionName(code)
+    ?? `selection_L${selection.start.line + 1}`;
+  const imports = extractImports(document.getText());
+
+  return {
+    workspaceRoot: workspaceFolder.uri.fsPath,
+    filePath: document.uri.fsPath,
+    language: document.languageId,
+    symbolName,
+    symbolKind: "function",
+    signature: document.lineAt(selection.start.line).text.trim(),
+    symbolKeyHint: [
+      workspaceFolder.uri.fsPath,
+      document.uri.fsPath,
+      symbolName,
+      selection.start.line + 1,
+      selection.end.line + 1
+    ].join("::"),
+    range: {
+      startLine: selection.start.line + 1,
+      endLine: selection.end.line + 1
+    },
+    code,
+    imports,
+    callers: [],
+    callees: await resolveCalleesFromText(document, code, selection.start, symbolName),
+    nearbySymbols: []
+  };
+}
+
+// --- Path 2: VS Code symbol provider context ---
 
 async function buildSymbolContext(
   document: vscode.TextDocument,
@@ -112,65 +183,7 @@ async function buildSymbolContext(
   };
 }
 
-async function getDocumentSymbols(uri: vscode.Uri): Promise<vscode.DocumentSymbol[]> {
-  return (
-    (await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-      "vscode.executeDocumentSymbolProvider",
-      uri
-    )) ?? []
-  );
-}
-
-function findInnermostSymbolPath(
-  symbols: vscode.DocumentSymbol[],
-  line: number,
-  pathToHere: vscode.DocumentSymbol[] = []
-): vscode.DocumentSymbol[] {
-  for (const symbol of symbols) {
-    if (symbol.range.start.line <= line && symbol.range.end.line >= line) {
-      const currentPath = [...pathToHere, symbol];
-      const child = findInnermostSymbolPath(symbol.children, line, currentPath);
-      return child.length ? child : currentPath;
-    }
-  }
-  return [];
-}
-
-function findPathByRange(
-  symbols: vscode.DocumentSymbol[],
-  range: vscode.Range,
-  pathToHere: vscode.DocumentSymbol[]
-): vscode.DocumentSymbol[] {
-  for (const symbol of symbols) {
-    if (symbol.range.isEqual(range)) {
-      return [...pathToHere, symbol];
-    }
-    const child = findPathByRange(symbol.children, range, [...pathToHere, symbol]);
-    if (child.length) {
-      return child;
-    }
-  }
-  return [];
-}
-
-function flattenSymbols(symbols: vscode.DocumentSymbol[]): vscode.DocumentSymbol[] {
-  return symbols.flatMap((symbol) => [symbol, ...flattenSymbols(symbol.children)]);
-}
-
-function buildNearbySymbols(
-  filePath: string,
-  root: vscode.DocumentSymbol,
-  current: vscode.DocumentSymbol
-): RelatedSymbol[] {
-  const symbols = flattenSymbols([root])
-    .filter((symbol) => symbol.name !== current.name)
-    .slice(0, 10);
-
-  return symbols.map((symbol) => ({
-    name: symbol.name,
-    filePath
-  }));
-}
+// --- Path 3: Text-based fallback ---
 
 async function buildFallbackSymbolContext(
   document: vscode.TextDocument,
@@ -181,32 +194,48 @@ async function buildFallbackSymbolContext(
     return undefined;
   }
 
+  // Try brace-delimited block detection (Java, C, TS/JS with braces)
   const methodRange = findEnclosingBlock(document, activeLine, "method");
-  if (!methodRange) {
-    return undefined;
+  if (methodRange) {
+    return buildFallbackFromBlock(document, workspaceFolder, methodRange, activeLine);
   }
 
-  const classRange = findEnclosingBlock(document, activeLine, "class");
-  const signatureLine = document.lineAt(methodRange.signatureLine).text.trim();
-  const symbolName = extractMethodName(signatureLine);
+  // Try indentation-based block detection (Python, YAML, etc.)
+  const indentRange = findIndentationBlock(document, activeLine);
+  if (indentRange) {
+    return buildFallbackFromBlock(document, workspaceFolder, indentRange, activeLine);
+  }
+
+  // Last resort: take a reasonable chunk of surrounding code
+  return buildSurroundingContext(document, workspaceFolder, activeLine);
+}
+
+async function buildFallbackFromBlock(
+  document: vscode.TextDocument,
+  workspaceFolder: vscode.WorkspaceFolder,
+  block: { startLine: number; endLine: number; signatureLine: number },
+  _activeLine: number
+): Promise<SymbolContext | undefined> {
+  const signatureText = document.lineAt(block.signatureLine).text.trim();
+  const symbolName = extractAnyFunctionName(signatureText);
   if (!symbolName) {
     return undefined;
   }
 
   const codeRange = new vscode.Range(
-    methodRange.startLine,
-    0,
-    methodRange.endLine,
-    document.lineAt(methodRange.endLine).text.length
+    block.startLine, 0,
+    block.endLine, document.lineAt(block.endLine).text.length
   );
   const code = document.getText(codeRange);
   const imports = extractImports(document.getText());
-  const nearbySymbols = extractNearbyMethodNames(document, methodRange.startLine, methodRange.endLine)
+  const classRange = findEnclosingBlock(document, block.startLine > 0 ? block.startLine - 1 : 0, "class");
+
+  const nearbySymbols = extractNearbyMethodNames(document, block.startLine, block.endLine)
     .filter((name) => name !== symbolName)
     .slice(0, 10)
     .map((name) => ({ name, filePath: document.uri.fsPath }));
 
-  const callers = await resolveCallersFromText(document, symbolName, methodRange.startLine, methodRange.endLine);
+  const callers = await resolveCallersFromText(document, symbolName, block.startLine, block.endLine);
   const callees = await resolveCalleesFromText(document, code, codeRange.start, symbolName);
 
   return {
@@ -214,19 +243,21 @@ async function buildFallbackSymbolContext(
     filePath: document.uri.fsPath,
     language: document.languageId,
     symbolName,
-    symbolKind: "method",
-    signature: signatureLine,
-    containerName: classRange ? extractClassName(document.lineAt(classRange.signatureLine).text.trim()) : undefined,
+    symbolKind: "function",
+    signature: signatureText,
+    containerName: classRange
+      ? extractClassName(document.lineAt(classRange.signatureLine).text.trim())
+      : undefined,
     symbolKeyHint: [
       workspaceFolder.uri.fsPath,
       document.uri.fsPath,
       symbolName,
-      methodRange.startLine + 1,
-      methodRange.endLine + 1
+      block.startLine + 1,
+      block.endLine + 1
     ].join("::"),
     range: {
-      startLine: methodRange.startLine + 1,
-      endLine: methodRange.endLine + 1
+      startLine: block.startLine + 1,
+      endLine: block.endLine + 1
     },
     code,
     imports,
@@ -235,6 +266,102 @@ async function buildFallbackSymbolContext(
     nearbySymbols
   };
 }
+
+function buildSurroundingContext(
+  document: vscode.TextDocument,
+  workspaceFolder: vscode.WorkspaceFolder,
+  activeLine: number
+): SymbolContext | undefined {
+  const startLine = Math.max(0, activeLine - 15);
+  const endLine = Math.min(document.lineCount - 1, activeLine + 15);
+  const range = new vscode.Range(startLine, 0, endLine, document.lineAt(endLine).text.length);
+  const code = document.getText(range);
+
+  if (!code.trim()) {
+    return undefined;
+  }
+
+  const lineText = document.lineAt(activeLine).text.trim();
+  const symbolName = extractAnyFunctionName(lineText)
+    ?? extractAnyFunctionName(code)
+    ?? `code_L${activeLine + 1}`;
+  const imports = extractImports(document.getText());
+
+  return {
+    workspaceRoot: workspaceFolder.uri.fsPath,
+    filePath: document.uri.fsPath,
+    language: document.languageId,
+    symbolName,
+    symbolKind: "unknown",
+    signature: lineText,
+    symbolKeyHint: [
+      workspaceFolder.uri.fsPath,
+      document.uri.fsPath,
+      symbolName,
+      startLine + 1,
+      endLine + 1
+    ].join("::"),
+    range: {
+      startLine: startLine + 1,
+      endLine: endLine + 1
+    },
+    code,
+    imports,
+    callers: [],
+    callees: [],
+    nearbySymbols: []
+  };
+}
+
+// --- Name extraction (handles all common patterns) ---
+
+const FUNCTION_NAME_PATTERNS: RegExp[] = [
+  // standard: function myFunc(
+  /\bfunction\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/,
+  // arrow/const: const myFunc = (...) =>
+  /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?\(/,
+  // arrow/const with type: const myFunc: Type = (...) =>
+  /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*(?::[^=]+)?\s*=\s*(?:async\s*)?\(/,
+  // arrow/const simple: const myFunc = async () =>
+  /\b(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:async\s*)?[^;]*=>/,
+  // method in class/object: myMethod(
+  /\b([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*(?::\s*\S+\s*)?\{/,
+  // export function: export function myFunc(
+  /\bexport\s+(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/,
+  // export const arrow: export const myFunc = (
+  /\bexport\s+(?:default\s+)?(?:const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/,
+  // Python def: def myFunc(
+  /\bdef\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/,
+  // Python async def
+  /\basync\s+def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/,
+  // Ruby def
+  /\bdef\s+(?:self\.)?([A-Za-z_][A-Za-z0-9_?!]*)/,
+  // Go func
+  /\bfunc\s+(?:\([^)]*\)\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(/,
+  // Java/C#/Kotlin-style: public void myMethod(
+  /\b(?:public|private|protected|static|async|override|virtual|abstract)\s+(?:\S+\s+)*([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/,
+  // Simple: identifier followed by (
+  /([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/,
+];
+
+const CONTROL_FLOW_NAMES = new Set([
+  "if", "for", "while", "switch", "catch", "try", "else", "do",
+  "synchronized", "return", "typeof", "new", "await", "console",
+  "super", "throw", "delete", "void", "import", "export", "require",
+  "print", "class", "interface", "enum", "type"
+]);
+
+function extractAnyFunctionName(text: string): string | undefined {
+  for (const pattern of FUNCTION_NAME_PATTERNS) {
+    const match = text.match(pattern);
+    if (match?.[1] && !CONTROL_FLOW_NAMES.has(match[1])) {
+      return match[1];
+    }
+  }
+  return undefined;
+}
+
+// --- Block detection ---
 
 function findEnclosingBlock(
   document: vscode.TextDocument,
@@ -262,10 +389,86 @@ function findEnclosingBlock(
       continue;
     }
 
-    return { startLine: line, endLine, signatureLine };
+    return { startLine: signatureLine, endLine, signatureLine };
   }
 
   return undefined;
+}
+
+function findIndentationBlock(
+  document: vscode.TextDocument,
+  activeLine: number
+): { startLine: number; endLine: number; signatureLine: number } | undefined {
+  for (let line = activeLine; line >= 0; line -= 1) {
+    const text = document.lineAt(line).text;
+    const trimmed = text.trim();
+
+    // Python-style: def/class/async def
+    if (/^(?:async\s+)?def\s+\w+|^class\s+\w+/.test(trimmed)) {
+      const bodyIndent = getIndentation(text) + 1;
+      let endLine = line;
+
+      for (let j = line + 1; j < document.lineCount; j++) {
+        const jText = document.lineAt(j).text;
+        if (!jText.trim()) {
+          continue;
+        }
+        if (getIndentation(jText) >= bodyIndent) {
+          endLine = j;
+        } else {
+          break;
+        }
+      }
+
+      if (activeLine <= endLine) {
+        return { startLine: line, endLine, signatureLine: line };
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function getIndentation(line: string): number {
+  const match = line.match(/^(\s*)/);
+  if (!match) { return 0; }
+  const spaces = match[1];
+  let count = 0;
+  for (const ch of spaces) {
+    count += ch === "\t" ? 4 : 1;
+  }
+  return Math.floor(count / 2);
+}
+
+function looksLikeMethodSignature(signature: string): boolean {
+  if (!signature.includes("{")) {
+    return false;
+  }
+
+  if (/\b(if|for|while|switch|catch|try|else|do|synchronized)\b/.test(signature)) {
+    return false;
+  }
+
+  // Standard function: name(...)
+  if (/([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/.test(signature) && signature.includes(")")) {
+    return true;
+  }
+
+  // Arrow function: const name = ... => {
+  if (/\b(?:const|let|var)\s+[A-Za-z_$][A-Za-z0-9_$]*\s*(?::[^=]+)?\s*=/.test(signature) && signature.includes("=>")) {
+    return true;
+  }
+
+  // Arrow without parens: const name = arg => {
+  if (/\b(?:const|let|var)\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*(?:async\s+)?[A-Za-z_$][A-Za-z0-9_$]*\s*=>/.test(signature)) {
+    return true;
+  }
+
+  return false;
+}
+
+function looksLikeClassSignature(signature: string): boolean {
+  return /\b(class|interface|enum|record)\s+[A-Za-z_][A-Za-z0-9_]*/.test(signature) && signature.includes("{");
 }
 
 function findSignatureLine(document: vscode.TextDocument, braceLine: number): number {
@@ -275,13 +478,19 @@ function findSignatureLine(document: vscode.TextDocument, braceLine: number): nu
     if (!previous) {
       break;
     }
-    if (previous.endsWith(";") || previous.endsWith("}") || previous.startsWith("@")) {
-      if (!previous.startsWith("@")) {
-        break;
-      }
+    if (previous.endsWith(";") || previous.endsWith("}")) {
+      break;
     }
-    if (previous.includes("(") || previous.startsWith("public ") || previous.startsWith("private ")
-      || previous.startsWith("protected ") || previous.startsWith("class ") || previous.includes(" class ")) {
+    if (previous.startsWith("@") || previous.startsWith("//") || previous.startsWith("/*") || previous.startsWith("*")) {
+      break;
+    }
+
+    const keywords = [
+      "function ", "const ", "let ", "var ", "export ", "async ",
+      "public ", "private ", "protected ", "class ", "def ", "func ",
+      "static ", "override ", "abstract "
+    ];
+    if (keywords.some((kw) => previous.includes(kw)) || previous.includes("(") || previous.includes("=>")) {
       line -= 1;
       continue;
     }
@@ -296,20 +505,6 @@ function collectSignature(document: vscode.TextDocument, startLine: number, endL
     lines.push(document.lineAt(line).text.trim());
   }
   return lines.join(" ").replace(/\s+/g, " ").trim();
-}
-
-function looksLikeMethodSignature(signature: string): boolean {
-  if (!signature.includes("(") || !signature.includes(")") || !signature.includes("{")) {
-    return false;
-  }
-  if (/\b(if|for|while|switch|catch|try|else|do|synchronized)\b/.test(signature)) {
-    return false;
-  }
-  return /([A-Za-z_][A-Za-z0-9_]*)\s*\(/.test(signature);
-}
-
-function looksLikeClassSignature(signature: string): boolean {
-  return /\b(class|interface|enum|record)\s+[A-Za-z_][A-Za-z0-9_]*/.test(signature) && signature.includes("{");
 }
 
 function findBlockEndLine(document: vscode.TextDocument, startLine: number): number | undefined {
@@ -334,11 +529,6 @@ function findBlockEndLine(document: vscode.TextDocument, startLine: number): num
   return undefined;
 }
 
-function extractMethodName(signature: string): string | undefined {
-  const match = signature.match(/([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-  return match?.[1];
-}
-
 function extractClassName(signature: string): string | undefined {
   const match = signature.match(/\b(?:class|interface|enum|record)\s+([A-Za-z_][A-Za-z0-9_]*)/);
   return match?.[1];
@@ -356,20 +546,16 @@ function extractNearbyMethodNames(
       continue;
     }
     const text = document.lineAt(line).text.trim();
-    if (!text.includes("(") || !text.includes("{")) {
-      continue;
-    }
-    if (!looksLikeMethodSignature(text)) {
-      continue;
-    }
-    const name = extractMethodName(text);
-    if (name) {
+    const name = extractAnyFunctionName(text);
+    if (name && !CONTROL_FLOW_NAMES.has(name)) {
       names.add(name);
     }
   }
 
   return [...names];
 }
+
+// --- Caller/callee resolution ---
 
 async function resolveCallersFromText(
   document: vscode.TextDocument,
@@ -380,6 +566,7 @@ async function resolveCallersFromText(
   const related = new Map<string, RelatedSymbol>();
   const fullText = document.getText();
   const matcher = new RegExp(`\\b${escapeRegExp(symbolName)}\\s*\\(`, "g");
+
   for (const match of fullText.matchAll(matcher)) {
     const offset = match.index ?? 0;
     const position = document.positionAt(offset);
@@ -392,7 +579,7 @@ async function resolveCallersFromText(
       continue;
     }
     const signature = document.lineAt(callerBlock.signatureLine).text.trim();
-    const callerName = extractMethodName(signature);
+    const callerName = extractAnyFunctionName(signature);
     if (!callerName || callerName === symbolName) {
       continue;
     }
@@ -444,11 +631,7 @@ async function resolveCalleesFromText(
         const signature = targetDocument.lineAt(range.start.line).text.trim();
         const key = `${name}:${uri.fsPath}:${signature}`;
         if (!resolved.has(key)) {
-          resolved.set(key, {
-            name,
-            filePath: uri.fsPath,
-            signature
-          });
+          resolved.set(key, { name, filePath: uri.fsPath, signature });
         }
       }
     } catch {
@@ -459,26 +642,11 @@ async function resolveCalleesFromText(
   for (const name of fallbackNames) {
     const key = `${name}:${document.uri.fsPath}`;
     if (!resolved.has(key)) {
-      resolved.set(key, {
-        name,
-        filePath: document.uri.fsPath
-      });
+      resolved.set(key, { name, filePath: document.uri.fsPath });
     }
   }
 
   return [...resolved.values()].slice(0, MAX_RELATED);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function extractImports(source: string): string[] {
-  return source
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => /^(import|export .* from|const .* require\()/.test(line))
-    .slice(0, MAX_IMPORTS);
 }
 
 async function resolveCallees(
@@ -510,11 +678,9 @@ async function resolveCallees(
 
       for (const definition of definitions) {
         const { uri, range } = getDefinitionTarget(definition);
-
         if (!isWorkspaceFile(uri)) {
           continue;
         }
-
         const targetDocument = await vscode.workspace.openTextDocument(uri);
         const signature = targetDocument.lineAt(range.start.line).text.trim();
         const key = `${name}:${uri.fsPath}:${signature}`;
@@ -542,10 +708,7 @@ async function resolveCallees(
   for (const name of fallbackNames) {
     const key = `${name}:${document.uri.fsPath}`;
     if (!resolved.has(key)) {
-      resolved.set(key, {
-        name,
-        filePath: document.uri.fsPath
-      });
+      resolved.set(key, { name, filePath: document.uri.fsPath });
     }
   }
 
@@ -600,6 +763,64 @@ async function resolveCallers(
   return [...related.values()].slice(0, MAX_RELATED);
 }
 
+// --- Utility functions ---
+
+async function getDocumentSymbols(uri: vscode.Uri): Promise<vscode.DocumentSymbol[]> {
+  return (
+    (await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
+      "vscode.executeDocumentSymbolProvider",
+      uri
+    )) ?? []
+  );
+}
+
+function findInnermostSymbolPath(
+  symbols: vscode.DocumentSymbol[],
+  line: number,
+  pathToHere: vscode.DocumentSymbol[] = []
+): vscode.DocumentSymbol[] {
+  for (const symbol of symbols) {
+    if (symbol.range.start.line <= line && symbol.range.end.line >= line) {
+      const currentPath = [...pathToHere, symbol];
+      const child = findInnermostSymbolPath(symbol.children, line, currentPath);
+      return child.length ? child : currentPath;
+    }
+  }
+  return [];
+}
+
+function findPathByRange(
+  symbols: vscode.DocumentSymbol[],
+  range: vscode.Range,
+  pathToHere: vscode.DocumentSymbol[]
+): vscode.DocumentSymbol[] {
+  for (const symbol of symbols) {
+    if (symbol.range.isEqual(range)) {
+      return [...pathToHere, symbol];
+    }
+    const child = findPathByRange(symbol.children, range, [...pathToHere, symbol]);
+    if (child.length) {
+      return child;
+    }
+  }
+  return [];
+}
+
+function flattenSymbols(symbols: vscode.DocumentSymbol[]): vscode.DocumentSymbol[] {
+  return symbols.flatMap((symbol) => [symbol, ...flattenSymbols(symbol.children)]);
+}
+
+function buildNearbySymbols(
+  filePath: string,
+  root: vscode.DocumentSymbol,
+  current: vscode.DocumentSymbol
+): RelatedSymbol[] {
+  return flattenSymbols([root])
+    .filter((symbol) => symbol.name !== current.name)
+    .slice(0, 10)
+    .map((symbol) => ({ name: symbol.name, filePath }));
+}
+
 function isInside(outer: vscode.Range, inner: vscode.Range): boolean {
   return outer.contains(inner.start) && outer.contains(inner.end);
 }
@@ -617,11 +838,7 @@ function getDefinitionTarget(
       range: definition.targetSelectionRange ?? definition.targetRange
     };
   }
-
-  return {
-    uri: definition.uri,
-    range: definition.range
-  };
+  return { uri: definition.uri, range: definition.range };
 }
 
 function mapSymbolKind(kind: vscode.SymbolKind): SymbolKind {
@@ -635,6 +852,18 @@ function mapSymbolKind(kind: vscode.SymbolKind): SymbolKind {
     default:
       return "unknown";
   }
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractImports(source: string): string[] {
+  return source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^(import|export .* from|const .* require\(|from\s+\w+)/.test(line))
+    .slice(0, MAX_IMPORTS);
 }
 
 export function buildRelatedSymbolSummary(symbol: RelatedSymbol): string {

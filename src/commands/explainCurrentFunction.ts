@@ -1,15 +1,16 @@
 import * as vscode from "vscode";
 import { buildFallbackExplanation } from "../core/fallbackExplanation";
 import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
-import { getConfig } from "../core/config";
 import { resolveCurrentSymbolContext } from "../intelligence/symbolResolver";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
+import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatExplanationMarkdown } from "../ui/formatter";
 
 export function createExplainCurrentFunctionCommand(
   orchestrator: ExplanationOrchestrator,
+  modelSelector: ModelSelectionService,
   panel: ExplanationPanel
 ) {
   return async () => {
@@ -26,22 +27,46 @@ export function createExplainCurrentFunctionCommand(
     }
 
     const input = buildExplainFunctionInput(context);
-    try {
-      const { result, cacheHit } = await orchestrator.explainFunction(input);
-      void orchestrator.prefetchConnectedContexts(context);
-      const markdown = formatExplanationMarkdown(result);
-      panel.show(
-        `Know Your Code: ${context.symbolName}${cacheHit ? " (cached)" : ""}`,
-        markdown
-      );
-    } catch (error) {
-      const friendly = formatProviderError(error, getConfig().providerMode);
-      const fallback = buildFallbackExplanation(context, friendly);
-      panel.show(
-        `Know Your Code: ${context.symbolName} (fallback)`,
-        formatExplanationMarkdown(fallback)
-      );
-      void vscode.window.showWarningMessage(friendly);
+    const selection = await modelSelector.pickModel({
+      title: "KYC: Select AI Model",
+      placeHolder: `Choose a model to explain ${context.symbolName}`
+    });
+    if (!selection) {
+      return;
     }
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `KYC: Explaining ${context.symbolName}...`,
+        cancellable: false
+      },
+      async () => {
+        try {
+          const { result, meta } = await orchestrator.explainFunction(input, selection);
+          void orchestrator.prefetchConnectedContexts(context, selection);
+          const markdown = formatExplanationMarkdown(result);
+          panel.show(
+            `KYC: ${context.symbolName}${meta.cacheHit ? " (cached)" : ""}`,
+            markdown,
+            {
+              provider: meta.providerLabel,
+              modelName: meta.modelName,
+              cacheHit: meta.cacheHit,
+              cacheLabel: meta.cacheLabel
+            }
+          );
+        } catch (error) {
+          const friendly = formatProviderError(error, selection.provider);
+          const fallback = buildFallbackExplanation(context, friendly);
+          panel.show(
+            `KYC: ${context.symbolName} (fallback)`,
+            formatExplanationMarkdown(fallback),
+            { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
+          );
+          void vscode.window.showWarningMessage(friendly);
+        }
+      }
+    );
   };
 }

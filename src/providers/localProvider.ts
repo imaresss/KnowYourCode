@@ -4,6 +4,8 @@ import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
 
 export class LocalProvider implements ModelProvider {
+  public readonly name = "local";
+
   public constructor(
     private readonly endpoint: string,
     private readonly modelName: string
@@ -23,7 +25,7 @@ export class LocalProvider implements ModelProvider {
           format: "json"
         })
       });
-    } catch (error) {
+    } catch {
       throw new Error(
         `fetch failed: unable to reach local provider at ${this.endpoint} for model ${this.modelName}`
       );

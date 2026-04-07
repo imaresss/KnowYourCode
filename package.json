@@ -1,78 +1,285 @@
 {
   "name": "know-your-code",
-  "displayName": "Know Your Code",
-  "description": "Explain the current function, connected calls, and cached code understanding inside VS Code.",
-  "version": "0.1.0",
+  "displayName": "KYC — Know Your Code",
+  "description": "Understand code deeply with AI-powered explanations, smart caching, and multi-provider support (OpenAI, Claude, Gemini).",
+  "version": "1.0.0",
   "publisher": "genbanext",
   "private": true,
+  "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.96.0"
   },
   "categories": [
+    "Programming Languages",
+    "Education",
     "Other"
   ],
+  "keywords": [
+    "code explanation",
+    "AI",
+    "OpenAI",
+    "Claude",
+    "Gemini",
+    "code understanding"
+  ],
   "activationEvents": [
-    "onCommand:knowYourCode.explainCurrentFunction",
-    "onCommand:knowYourCode.explainCurrentLine",
+    "onCommand:knowYourCode.explainFunction",
+    "onCommand:knowYourCode.explainLine",
+    "onCommand:knowYourCode.explainCallFlow",
     "onCommand:knowYourCode.refreshExplanation",
-    "onCommand:knowYourCode.showConnectedCalls"
+    "onCommand:knowYourCode.runContextAction",
+    "onCommand:knowYourCode.showConnectedCalls",
+    "onCommand:knowYourCode.showContextActions",
+    "onCommand:knowYourCode.switchProvider",
+    "onCommand:knowYourCode.setApiKey"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "knowYourCode.explainCurrentFunction",
-        "title": "Know Your Code: Explain Current Function"
+        "command": "knowYourCode.explainFunction",
+        "title": "KYC: Explain Function",
+        "category": "Know Your Code"
       },
       {
-        "command": "knowYourCode.explainCurrentLine",
-        "title": "Know Your Code: Explain Current Line"
+        "command": "knowYourCode.explainLine",
+        "title": "KYC: Explain Line",
+        "category": "Know Your Code"
+      },
+      {
+        "command": "knowYourCode.explainCallFlow",
+        "title": "KYC: Explain Call Flow",
+        "category": "Know Your Code"
       },
       {
         "command": "knowYourCode.refreshExplanation",
-        "title": "Know Your Code: Refresh Explanation"
+        "title": "KYC: Regenerate Explanation",
+        "category": "Know Your Code"
+      },
+      {
+        "command": "knowYourCode.runContextAction",
+        "title": "KYC: Run Context Action",
+        "category": "Know Your Code"
       },
       {
         "command": "knowYourCode.showConnectedCalls",
-        "title": "Know Your Code: Show Connected Calls"
+        "title": "KYC: Show Connected Calls",
+        "category": "Know Your Code"
+      },
+      {
+        "command": "knowYourCode.showContextActions",
+        "title": "KYC: Show Context Actions",
+        "category": "Know Your Code"
+      },
+      {
+        "command": "knowYourCode.switchProvider",
+        "title": "KYC: Switch AI Model",
+        "category": "Know Your Code"
+      },
+      {
+        "command": "knowYourCode.setApiKey",
+        "title": "KYC: Set API Key",
+        "category": "Know Your Code"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "knowYourCode.explainFunction",
+          "group": "knowYourCode@1",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "knowYourCode.explainLine",
+          "group": "knowYourCode@2",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "knowYourCode.explainCallFlow",
+          "group": "knowYourCode@3",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "knowYourCode.showContextActions",
+          "group": "knowYourCode@4",
+          "when": "editorTextFocus"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "knowYourCode.explainFunction",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.explainLine",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.explainCallFlow",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.refreshExplanation",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.showConnectedCalls",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.showContextActions",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.switchProvider"
+        },
+        {
+          "command": "knowYourCode.setApiKey"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "knowYourCode.explainFunction",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "knowYourCode.explainLine",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "knowYourCode.explainCallFlow",
+        "key": "ctrl+shift+f",
+        "mac": "cmd+shift+f",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "knowYourCode.showContextActions",
+        "key": "ctrl+shift+k",
+        "mac": "cmd+shift+k",
+        "when": "editorTextFocus"
       }
     ],
     "configuration": {
-      "title": "Know Your Code",
+      "title": "Know Your Code (KYC)",
       "properties": {
-        "knowYourCode.providerMode": {
+        "knowYourCode.activeProvider": {
           "type": "string",
           "enum": [
-            "local",
-            "cloud"
+            "openai",
+            "claude",
+            "gemini",
+            "local"
           ],
-          "default": "local",
-          "description": "Choose a single explanation provider mode for this extension instance."
+          "enumDescriptions": [
+            "OpenAI (GPT-4o, GPT-4o-mini, etc.)",
+            "Anthropic Claude (Claude Haiku, Sonnet, Opus)",
+            "Google Gemini (Gemini Flash, Pro)",
+            "Local model via Ollama or compatible API"
+          ],
+          "default": "openai",
+          "description": "Preferred AI provider when choosing among multiple configured models."
         },
-        "knowYourCode.modelName": {
+        "knowYourCode.openai.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable OpenAI in the KYC model picker."
+        },
+        "knowYourCode.openai.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for OpenAI. Get one at platform.openai.com."
+        },
+        "knowYourCode.openai.endpoint": {
+          "type": "string",
+          "default": "https://api.openai.com/v1/chat/completions",
+          "description": "OpenAI API endpoint URL."
+        },
+        "knowYourCode.openai.modelName": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Preferred OpenAI model to preselect in the KYC model picker."
+        },
+        "knowYourCode.claude.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for Anthropic Claude. Get one at console.anthropic.com."
+        },
+        "knowYourCode.claude.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Anthropic Claude in the KYC model picker."
+        },
+        "knowYourCode.claude.endpoint": {
+          "type": "string",
+          "default": "https://api.anthropic.com/v1/messages",
+          "description": "Anthropic Claude API endpoint URL."
+        },
+        "knowYourCode.claude.modelName": {
           "type": "string",
           "default": "claude-haiku-4-5-20251001",
-          "description": "Model name used by the configured provider."
+          "description": "Preferred Claude model to preselect in the KYC model picker."
+        },
+        "knowYourCode.gemini.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for Google Gemini. Get one at aistudio.google.com."
+        },
+        "knowYourCode.gemini.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Google Gemini in the KYC model picker."
+        },
+        "knowYourCode.gemini.endpoint": {
+          "type": "string",
+          "default": "https://generativelanguage.googleapis.com/v1beta/models",
+          "description": "Google Gemini API endpoint URL."
+        },
+        "knowYourCode.gemini.modelName": {
+          "type": "string",
+          "default": "gemini-2.0-flash",
+          "description": "Preferred Gemini model to preselect in the KYC model picker."
         },
         "knowYourCode.localEndpoint": {
           "type": "string",
           "default": "http://127.0.0.1:11434/api/generate",
-          "description": "Local model endpoint, for example Ollama's generate API."
+          "description": "Local model endpoint (e.g., Ollama generate API)."
         },
-        "knowYourCode.cloudEndpoint": {
-          "type": "string",
-          "default": "https://api.anthropic.com/v1/messages",
-          "description": "Cloud inference endpoint."
+        "knowYourCode.localEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable the local model option in the KYC model picker."
         },
-        "knowYourCode.apiKey": {
+        "knowYourCode.localModelName": {
           "type": "string",
-          "default": "",
-          "markdownDescription": "API key for the cloud provider. Prefer storing secrets in VS Code secret storage later."
+          "default": "qwen2.5-coder:7b",
+          "description": "Model name for the local provider."
         },
         "knowYourCode.prefetchConnectedCalls": {
           "type": "boolean",
           "default": true,
-          "description": "Prefetch explanations for direct callees after explaining the current function."
+          "description": "Automatically prefetch explanations for direct callees after explaining a function."
+        },
+        "knowYourCode.cacheTtlSeconds": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Optional TTL for cached explanations in seconds. Set to 0 to keep cache entries until the code, dependency graph, or model changes."
+        },
+        "knowYourCode.selectionDebounceMs": {
+          "type": "number",
+          "default": 250,
+          "minimum": 0,
+          "description": "Debounce window for rapid repeated explanation requests. In-flight requests for the same function/model are also deduplicated."
+        },
+        "knowYourCode.inlineActionsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show context-aware KYC inline actions using CodeLens near the current selection or enclosing function."
         }
       }
     }

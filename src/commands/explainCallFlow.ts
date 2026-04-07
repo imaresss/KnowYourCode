@@ -1,22 +1,23 @@
 import * as vscode from "vscode";
 import { buildFallbackExplanation } from "../core/fallbackExplanation";
-import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
 import { resolveCurrentSymbolContext } from "../intelligence/symbolResolver";
+import { buildContentHash, buildDependencyHash } from "../intelligence/fingerprint";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
-import { formatExplanationMarkdown } from "../ui/formatter";
+import { formatCallFlowMarkdown, formatExplanationMarkdown } from "../ui/formatter";
+import { ExplainCallFlowInput } from "../core/types";
 
-export function createRefreshExplanationCommand(
+export function createExplainCallFlowCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
   panel: ExplanationPanel
-): () => Promise<void> {
+) {
   return async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      void vscode.window.showInformationMessage("Open a file first to refresh the current function explanation.");
+      void vscode.window.showInformationMessage("Open a file first to explain the call flow.");
       return;
     }
 
@@ -26,10 +27,21 @@ export function createRefreshExplanationCommand(
       return;
     }
 
-    const input = buildExplainFunctionInput(context);
+    const input: ExplainCallFlowInput = {
+      workspaceRoot: context.workspaceRoot,
+      filePath: context.filePath,
+      language: context.language,
+      symbolName: context.symbolName,
+      symbolKind: context.symbolKind,
+      code: context.code,
+      callers: context.callers,
+      callees: context.callees,
+      contentHash: buildContentHash(context),
+      dependencyHash: buildDependencyHash(context)
+    };
     const selection = await modelSelector.pickModel({
       title: "KYC: Select AI Model",
-      placeHolder: `Choose a model to regenerate ${context.symbolName}`
+      placeHolder: `Choose a model to analyze ${context.symbolName}`
     });
     if (!selection) {
       return;
@@ -38,16 +50,16 @@ export function createRefreshExplanationCommand(
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `KYC: Re-generating explanation for ${context.symbolName}...`,
+        title: `KYC: Analyzing call flow for ${context.symbolName}...`,
         cancellable: false
       },
       async () => {
         try {
-          const { result, meta } = await orchestrator.explainFunction(input, selection, { forceRefresh: true });
-          void orchestrator.prefetchConnectedContexts(context, selection);
+          const { result, meta } = await orchestrator.explainCallFlow(input, selection);
+          const markdown = formatCallFlowMarkdown(result, context.symbolName);
           panel.show(
-            `KYC: ${context.symbolName} (refreshed)`,
-            formatExplanationMarkdown(result),
+            `KYC: Call Flow — ${context.symbolName}${meta.cacheHit ? " (cached)" : ""}`,
+            markdown,
             {
               provider: meta.providerLabel,
               modelName: meta.modelName,

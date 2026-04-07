@@ -26,12 +26,12 @@ export function buildFallbackExplanation(
     outputs,
     dependencies,
     risks: [
-      "This is a heuristic fallback, so semantic accuracy is lower than a model-backed explanation.",
-      "Start the configured model provider to get richer explanations."
+      "This is a heuristic fallback — semantic accuracy is lower than a model-backed explanation.",
+      "Configure an AI provider to get richer explanations."
     ],
     connectedFlow: [
-      ...context.callers.slice(0, 3).map((caller) => `${caller.name} -> ${context.symbolName}`),
-      ...context.callees.slice(0, 4).map((callee) => `${context.symbolName} -> ${callee.name}`)
+      ...context.callers.slice(0, 3).map((caller) => `${caller.name} → ${context.symbolName}`),
+      ...context.callees.slice(0, 4).map((callee) => `${context.symbolName} → ${callee.name}`)
     ],
     confidence: 0.28
   };
@@ -45,7 +45,7 @@ function inferInputs(signature?: string): string[] {
   const params = signature
     .slice(signature.indexOf("(") + 1, signature.lastIndexOf(")"))
     .split(",")
-    .map((param) => param.trim())
+    .map((p) => p.trim())
     .filter(Boolean);
 
   return params.length ? params : ["No explicit parameters."];
@@ -56,11 +56,13 @@ function inferOutputs(signature?: string): string[] {
     return ["Output type could not be inferred."];
   }
 
-  const beforeParen = signature.split("(")[0]?.trim() ?? "";
-  const parts = beforeParen.split(/\s+/).filter(Boolean);
-  if (parts.length < 2) {
-    return ["Output type could not be inferred."];
+  const colonIdx = signature.lastIndexOf(":");
+  if (colonIdx >= 0) {
+    const returnType = signature.slice(colonIdx + 1).replace(/[{;].*/, "").trim();
+    if (returnType) {
+      return [`Returns ${returnType}`];
+    }
   }
 
-  return [`Likely returns ${parts[parts.length - 2] ?? "a value"}.`];
+  return ["Output type could not be inferred."];
 }

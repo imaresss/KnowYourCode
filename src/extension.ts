@@ -3,56 +3,104 @@ import { openDatabase } from "./cache/db";
 import { ExplanationRepository } from "./cache/explanationRepo";
 import { createExplainCurrentFunctionCommand } from "./commands/explainCurrentFunction";
 import { createExplainCurrentLineCommand } from "./commands/explainCurrentLine";
+import { createExplainCallFlowCommand } from "./commands/explainCallFlow";
 import { createRefreshExplanationCommand } from "./commands/refreshExplanation";
+import { createRunContextActionCommand } from "./commands/runContextAction";
 import { createShowConnectedCallsCommand } from "./commands/showConnectedCalls";
+import { createShowContextActionsCommand } from "./commands/showContextActions";
+import { createSwitchProviderCommand } from "./commands/switchProvider";
+import { createSetApiKeyCommand } from "./commands/setApiKey";
 import { getConfig } from "./core/config";
 import { ExplanationOrchestrator } from "./core/orchestrator";
-import { CloudProvider } from "./providers/cloudProvider";
-import { LocalProvider } from "./providers/localProvider";
-import { ModelProvider } from "./providers/modelProvider";
+import { ModelSelectionService } from "./providers/modelSelector";
+import { ContextActionCodeLensProvider } from "./ui/contextActionCodeLensProvider";
 import { ExplanationPanel } from "./ui/panel";
 import { logInfo } from "./utils/logger";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const config = getConfig();
+  let config = getConfig();
   const db = await openDatabase(context);
   const repo = new ExplanationRepository(db);
-  const provider = buildProvider(config);
-  const orchestrator = new ExplanationOrchestrator(repo, config, provider);
+  const orchestrator = new ExplanationOrchestrator(repo, config);
   const panel = new ExplanationPanel();
+  const modelSelector = new ModelSelectionService(context, () => config);
+  const codeLensProvider = new ContextActionCodeLensProvider(() => config);
+
+  panel.onMessage((message) => {
+    switch (message.type) {
+      case "regenerate":
+        void vscode.commands.executeCommand("knowYourCode.refreshExplanation");
+        break;
+      case "switchProvider":
+        void vscode.commands.executeCommand("knowYourCode.switchProvider");
+        break;
+    }
+  });
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
-      "knowYourCode.explainCurrentFunction",
-      createExplainCurrentFunctionCommand(orchestrator, panel)
+      "knowYourCode.explainFunction",
+      createExplainCurrentFunctionCommand(orchestrator, modelSelector, panel)
     ),
     vscode.commands.registerCommand(
-      "knowYourCode.explainCurrentLine",
-      createExplainCurrentLineCommand(orchestrator, panel)
+      "knowYourCode.explainLine",
+      createExplainCurrentLineCommand(orchestrator, modelSelector, panel)
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.explainCallFlow",
+      createExplainCallFlowCommand(orchestrator, modelSelector, panel)
     ),
     vscode.commands.registerCommand(
       "knowYourCode.refreshExplanation",
-      createRefreshExplanationCommand(orchestrator, panel)
+      createRefreshExplanationCommand(orchestrator, modelSelector, panel)
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.runContextAction",
+      createRunContextActionCommand(orchestrator, modelSelector, panel)
     ),
     vscode.commands.registerCommand(
       "knowYourCode.showConnectedCalls",
       createShowConnectedCallsCommand(orchestrator, panel)
     ),
+    vscode.commands.registerCommand(
+      "knowYourCode.showContextActions",
+      createShowContextActionsCommand()
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.switchProvider",
+      createSwitchProviderCommand(modelSelector)
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.setApiKey",
+      createSetApiKeyCommand()
+    ),
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("knowYourCode")) {
+        config = getConfig();
+        orchestrator.updateConfig(config);
+        codeLensProvider.scheduleRefresh();
+        logInfo(`Configuration reloaded. Active provider: ${config.activeProvider}`);
+      }
+    }),
+    vscode.languages.registerCodeLensProvider({ scheme: "file" }, codeLensProvider),
+    vscode.window.onDidChangeTextEditorSelection(() => {
+      codeLensProvider.scheduleRefresh();
+    }),
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      codeLensProvider.scheduleRefresh();
+    }),
+    vscode.workspace.onDidChangeTextDocument(() => {
+      codeLensProvider.scheduleRefresh();
+    }),
     vscode.workspace.onDidSaveTextDocument((document) => {
       orchestrator.invalidateFile(document.uri.fsPath);
+      codeLensProvider.scheduleRefresh();
       logInfo(`Invalidated cached explanations for ${document.uri.fsPath}`);
     }),
     { dispose: () => db.close() }
   );
 
-  logInfo(`Know Your Code activated in ${config.providerMode} mode.`);
-}
-
-function buildProvider(config: ReturnType<typeof getConfig>): ModelProvider {
-  if (config.providerMode === "cloud") {
-    return new CloudProvider(config.cloudEndpoint, config.apiKey, config.modelName);
-  }
-  return new LocalProvider(config.localEndpoint, config.modelName);
+  logInfo(`Know Your Code activated. Provider: ${config.activeProvider}`);
 }
 
 export function deactivate(): void {}

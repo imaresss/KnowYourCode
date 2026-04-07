@@ -23,8 +23,9 @@ export function createShowConnectedCallsCommand(
 
     const snapshot = orchestrator.getConnectedCalls(context);
     panel.show(
-      `Know Your Code: Calls for ${context.symbolName}`,
-      formatConnectedCallsMarkdown(snapshot)
+      `KYC: Calls for ${context.symbolName}`,
+      formatConnectedCallsMarkdown(snapshot),
+      { provider: "Workspace", cacheHit: false }
     );
   };
 }
