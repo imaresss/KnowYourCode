@@ -105,6 +105,11 @@ export function parseJsonObjectFromModelText<T extends object>(raw: string): T |
     }
   }
 
+  const loose = parseLooseObjectFallback(afterFences);
+  if (isRecord(loose)) {
+    return loose as T;
+  }
+
   return undefined;
 }
 
@@ -166,8 +171,15 @@ function repairLikelyJson(value: string): string {
     .replace(/\r\n/g, "\n")
     .replace(/,\s*([}\]])/g, "$1");
 
+  repaired = stripMarkdownFences(repaired);
+  repaired = ensureObjectWrapper(repaired);
+  repaired = quoteUnquotedKeys(repaired);
+  repaired = fixDanglingQuotedKeys(repaired);
+  repaired = addMissingCommasBetweenPairs(repaired);
+  repaired = fixKnownMergedStepDescriptionPair(repaired);
   repaired = normalizeSingleQuotedPairs(repaired);
   repaired = escapeUnterminatedInnerQuotes(repaired);
+  repaired = addMissingCommasBetweenPairs(repaired);
   return repaired;
 }
 
@@ -231,6 +243,48 @@ function nextNonWhitespaceChar(value: string, start: number): string | undefined
     }
   }
   return undefined;
+}
+
+function ensureObjectWrapper(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    return trimmed;
+  }
+
+  // Model may emit `"key": ...` without surrounding braces.
+  if (/^"[^"]+"\s*:/.test(trimmed) || /^[A-Za-z_$][\w$-]*\s*:/.test(trimmed)) {
+    return `{ ${trimmed} }`;
+  }
+  return trimmed;
+}
+
+function quoteUnquotedKeys(value: string): string {
+  // { key: ... } or , key: ...
+  return value.replace(/([,{]\s*)([A-Za-z_$][\w$-]*)(\s*:)/g, "$1\"$2\"$3");
+}
+
+function fixDanglingQuotedKeys(value: string): string {
+  // { key": ... } or , key": ...
+  return value.replace(/([,{]\s*)([A-Za-z_$][\w$-]*)"(\s*:)/g, "$1\"$2\"$3");
+}
+
+function addMissingCommasBetweenPairs(value: string): string {
+  // ..."value" "nextKey": ...  => ..."value", "nextKey": ...
+  let repaired = value.replace(/("\s*)("([A-Za-z_$][\w$-]*)"\s*:)/g, "$1, $2");
+  // ...123 "nextKey": ... => ...123, "nextKey": ...
+  repaired = repaired.replace(/(\d|\]|\})\s+("([A-Za-z_$][\w$-]*)"\s*:)/g, "$1, $2");
+  return repaired;
+}
+
+function fixKnownMergedStepDescriptionPair(value: string): string {
+  // "step": "Convert ... description": "..." -> "step": "Convert ...", "description": "..."
+  return value.replace(
+    /("step"\s*:\s*"[^"]*?)\s+description"\s*:/g,
+    "$1\", \"description\":"
+  );
 }
 
 /**
@@ -299,6 +353,51 @@ function extractBalancedJsonObject(text: string): string | undefined {
   }
 
   return undefined;
+}
+
+function parseLooseObjectFallback(text: string): Record<string, unknown> | undefined {
+  const source = stripMarkdownFences(text)
+    .replace(/\r?\n/g, " ")
+    .trim();
+  if (!source) {
+    return undefined;
+  }
+
+  const out: Record<string, unknown> = {};
+
+  // Best-effort top-level style key extraction for malformed model JSON.
+  const stringPairPattern = /(?:^|[{,]\s*)"?([A-Za-z_$][\w$-]*)"?\s*:\s*"([^"]*)"/g;
+  let stringPairMatch = stringPairPattern.exec(source);
+  while (stringPairMatch) {
+    out[stringPairMatch[1]] = stringPairMatch[2].trim();
+    stringPairMatch = stringPairPattern.exec(source);
+  }
+
+  const numberPairPattern = /(?:^|[{,]\s*)"?([A-Za-z_$][\w$-]*)"?\s*:\s*(-?\d+(?:\.\d+)?)/g;
+  let numberPairMatch = numberPairPattern.exec(source);
+  while (numberPairMatch) {
+    out[numberPairMatch[1]] = Number(numberPairMatch[2]);
+    numberPairMatch = numberPairPattern.exec(source);
+  }
+
+  // Pull plain string arrays when possible.
+  const arrayPattern = /(?:^|[{,]\s*)"?([A-Za-z_$][\w$-]*)"?\s*:\s*\[([^\]]*)\]/g;
+  let arrayMatch = arrayPattern.exec(source);
+  while (arrayMatch) {
+    const items: string[] = [];
+    const itemPattern = /"([^"]+)"/g;
+    let itemMatch = itemPattern.exec(arrayMatch[2]);
+    while (itemMatch) {
+      items.push(itemMatch[1].trim());
+      itemMatch = itemPattern.exec(arrayMatch[2]);
+    }
+    if (items.length > 0) {
+      out[arrayMatch[1]] = items;
+    }
+    arrayMatch = arrayPattern.exec(source);
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function normalizeStringList(value: unknown): string[] {

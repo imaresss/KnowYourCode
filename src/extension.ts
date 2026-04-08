@@ -17,6 +17,7 @@ import { ModelSelectionService } from "./providers/modelSelector";
 import { ContextActionCodeLensProvider } from "./ui/contextActionCodeLensProvider";
 import { ExplanationPanel } from "./ui/panel";
 import { logInfo } from "./utils/logger";
+import { CodeReferenceNavigator, CodeReferenceOccurrence } from "./core/codeReferences";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   let config = getConfig();
@@ -24,6 +25,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const repo = new ExplanationRepository(db);
   const orchestrator = new ExplanationOrchestrator(repo, config);
   const panel = new ExplanationPanel();
+  const codeReferenceNavigator = new CodeReferenceNavigator();
   const modelSelector = new ModelSelectionService(context, () => config);
   const codeLensProvider = new ContextActionCodeLensProvider(() => config);
   let lastActionRunner: LastActionRunner | undefined;
@@ -44,6 +46,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           void vscode.commands.executeCommand("knowYourCode.switchProvider");
         }
         break;
+      case "highlightCode": {
+        const payload = message.payload as {
+          identifier?: string;
+          occurrences?: CodeReferenceOccurrence[];
+          lineHint?: number;
+        } | undefined;
+        if (payload?.identifier) {
+          codeReferenceNavigator.scheduleHighlight(
+            payload.identifier,
+            payload.occurrences ?? [],
+            payload.lineHint
+          );
+        }
+        break;
+      }
     }
   });
 
@@ -115,6 +132,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       codeLensProvider.scheduleRefresh();
       logInfo(`Invalidated cached explanations for ${document.uri.fsPath}`);
     }),
+    { dispose: () => codeReferenceNavigator.dispose() },
     { dispose: () => db.close() }
   );
 

@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
+import { CodeReferenceMapEntry } from "../core/codeReferences";
 
 export interface PanelShowOptions {
   provider?: string;
   cacheHit?: boolean;
   cacheLabel?: string;
   modelName?: string;
+  references?: CodeReferenceMapEntry[];
 }
 
 type MessageHandler = (message: { type: string; payload?: unknown }) => void;
@@ -113,7 +115,10 @@ function markdownToHtml(md: string): string {
 }
 
 function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
-  const contentHtml = markdownToHtml(markdown);
+  const references = options.references ?? [];
+  const contentHtml = annotateCodeReferences(markdownToHtml(markdown), references);
+  const referenceLookupJson = JSON.stringify(buildReferenceLookup(references))
+    .replace(/</g, "\\u003c");
   const provider = options.provider ?? "unknown";
   const cacheLabel = options.cacheLabel ?? (options.cacheHit ? "Cached" : "Generated");
   const modelName = options.modelName ?? provider;
@@ -150,6 +155,7 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   <script>
     const vscode = acquireVsCodeApi();
     const content = document.getElementById('content');
+    const referenceLookup = ${referenceLookupJson};
 
     document.getElementById('copyBtn').addEventListener('click', () => {
       vscode.postMessage({ type: 'copy', payload: content.innerText });
@@ -162,6 +168,47 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
     document.getElementById('switchBtn').addEventListener('click', () => {
       vscode.postMessage({ type: 'switchProvider' });
     });
+
+    window.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const ref = target.closest('.kyc-ref');
+      let identifier = ref instanceof HTMLElement ? ref.dataset.id : undefined;
+      if (!identifier) {
+        const inlineCode = target.closest('code.inline-code');
+        if (inlineCode instanceof HTMLElement) {
+          identifier = extractIdentifier(inlineCode.innerText);
+        }
+      }
+      if (!identifier) {
+        return;
+      }
+      const lineHint = extractLineHint(target);
+      vscode.postMessage({
+        type: 'highlightCode',
+        payload: {
+          identifier,
+          occurrences: Array.isArray(referenceLookup[identifier]) ? referenceLookup[identifier] : [],
+          lineHint
+        }
+      });
+    });
+
+    function extractLineHint(element) {
+      if (!(element instanceof HTMLElement)) {
+        return undefined;
+      }
+      const container = element.closest('li, p, div, section, article') || element;
+      const text = (container && 'innerText' in container ? container.innerText : element.innerText) || '';
+      const match = text.match(/\\bL(\\d+)(?:-\\d+)?\\b/i);
+      if (!match) {
+        return undefined;
+      }
+      const lineNumber = Number(match[1]);
+      return Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined;
+    }
   </script>
 </body>
 </html>`;
@@ -368,6 +415,16 @@ const CSS = `
     font-size: 0.9em;
   }
 
+  .kyc-ref {
+    cursor: pointer;
+    border-bottom: 1px dotted var(--accent);
+    transition: background-color 0.15s ease;
+  }
+
+  .kyc-ref:hover {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
+
   hr {
     border: none;
     border-top: 1px solid var(--border);
@@ -409,3 +466,90 @@ const CSS = `
     font-size: 0.9em;
   }
 `;
+
+function annotateCodeReferences(html: string, references: CodeReferenceMapEntry[]): string {
+  const identifiers = new Set<string>(
+    references
+      .map((entry) => normalizeIdentifier(entry.identifier))
+      .filter((identifier): identifier is string => Boolean(identifier))
+  );
+
+  // First pass: annotate inline code blocks. This works even without precomputed references.
+  const withInlineCodeRefs = html.replace(
+    /<code class="inline-code">([^<]+)<\/code>/g,
+    (full, token: string) => {
+      const identifier = extractIdentifier(token);
+      if (!identifier) {
+        return full;
+      }
+      identifiers.add(identifier);
+      return `<span class="kyc-ref" data-id="${identifier}" title="Click to locate in code">${full}</span>`;
+    }
+  );
+
+  if (identifiers.size === 0) {
+    return withInlineCodeRefs;
+  }
+
+  // Second pass: annotate bare function-call style references in text nodes only.
+  const parts = withInlineCodeRefs.split(/(<[^>]+>)/g);
+  const sortedIdentifiers = Array.from(identifiers).sort((a, b) => b.length - a.length);
+  const alternation = sortedIdentifiers.map((id) => escapeRegExp(id)).join("|");
+  const callOrIdentifierPattern = alternation
+    ? new RegExp(`\\b(${alternation})(\\s*\\(\\))?\\b`, "g")
+    : undefined;
+
+  for (let i = 0; i < parts.length; i += 1) {
+    if (parts[i].startsWith("<")) {
+      continue;
+    }
+    if (!callOrIdentifierPattern) {
+      continue;
+    }
+    parts[i] = parts[i].replace(callOrIdentifierPattern, (_full, id: string, callSuffix: string) => {
+      const token = `${id}${callSuffix ?? ""}`;
+      return `<span class="kyc-ref" data-id="${id}" title="Click to locate in code">${token}</span>`;
+    });
+  }
+  return parts.join("");
+}
+
+function extractIdentifier(token: string): string | undefined {
+  const trimmed = token.trim();
+  const functionMatch = trimmed.match(/^([A-Za-z_$][\w$]*)\(\)$/);
+  if (functionMatch) {
+    return normalizeIdentifier(functionMatch[1]);
+  }
+  if (trimmed.includes(".")) {
+    const parts = trimmed.split(".");
+    return normalizeIdentifier(parts[parts.length - 1] ?? "");
+  }
+  return normalizeIdentifier(trimmed);
+}
+
+function normalizeIdentifier(identifier: string): string | undefined {
+  const cleaned = identifier
+    .trim()
+    .replace(/^[^A-Za-z_$]+/, "")
+    .replace(/[^A-Za-z0-9_$]+$/g, "");
+  if (!cleaned || !/^[A-Za-z_$][\w$]*$/.test(cleaned)) {
+    return undefined;
+  }
+  return cleaned;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildReferenceLookup(references: CodeReferenceMapEntry[]): Record<string, CodeReferenceMapEntry["occurrences"]> {
+  const lookup: Record<string, CodeReferenceMapEntry["occurrences"]> = {};
+  for (const reference of references) {
+    const id = normalizeIdentifier(reference.identifier);
+    if (!id || reference.occurrences.length === 0) {
+      continue;
+    }
+    lookup[id] = reference.occurrences;
+  }
+  return lookup;
+}

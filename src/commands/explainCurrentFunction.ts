@@ -9,6 +9,7 @@ import { SelectedModel } from "../core/types";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatExplanationMarkdown } from "../ui/formatter";
+import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 
 export function createExplainCurrentFunctionCommand(
   orchestrator: ExplanationOrchestrator,
@@ -71,6 +72,15 @@ export function createExplainCurrentFunctionCommand(
           });
           void orchestrator.prefetchConnectedContexts(context, selection);
           const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine);
+          const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
+            focusedRange: editor.selection,
+            seedIdentifiers: [
+              context.symbolName,
+              ...context.callers.map((item) => item.name),
+              ...context.callees.map((item) => item.name),
+              ...context.nearbySymbols.map((item) => item.name)
+            ]
+          });
           panel.show(
             `KYC: ${context.symbolName}${meta.cacheHit ? " (cached)" : ""}`,
             markdown,
@@ -78,7 +88,8 @@ export function createExplainCurrentFunctionCommand(
               provider: meta.providerLabel,
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
-              cacheLabel: meta.cacheLabel
+              cacheLabel: meta.cacheLabel,
+              references
             }
           );
         } catch (error) {
@@ -87,7 +98,11 @@ export function createExplainCurrentFunctionCommand(
           panel.show(
             `KYC: ${context.symbolName} (fallback)`,
             formatExplanationMarkdown(fallback, context.code, context.range.startLine),
-            { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
+            {
+              provider: selection.providerLabel,
+              modelName: selection.modelName,
+              cacheHit: false
+            }
           );
           void vscode.window.showWarningMessage(friendly);
         }

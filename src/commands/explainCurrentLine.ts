@@ -8,6 +8,7 @@ import { ExplanationPanel } from "../ui/panel";
 import { formatLineExplanationMarkdown } from "../ui/formatter";
 import { ExplainLineInput, SelectedModel } from "../core/types";
 import { sha256 } from "../utils/hash";
+import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 
 export function createExplainCurrentLineCommand(
   orchestrator: ExplanationOrchestrator,
@@ -84,6 +85,10 @@ export function createExplainCurrentLineCommand(
             forceRefresh: options?.forceRefresh
           });
           const markdown = formatLineExplanationMarkdown(result, lineText, lineNumber, enclosingName);
+          const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
+            focusedRange: editor.selection,
+            seedIdentifiers: [enclosingName]
+          });
           panel.show(
             `KYC: Line ${lineNumber}${meta.cacheHit ? " (cached)" : ""}`,
             markdown,
@@ -91,7 +96,8 @@ export function createExplainCurrentLineCommand(
               provider: meta.providerLabel,
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
-              cacheLabel: meta.cacheLabel
+              cacheLabel: meta.cacheLabel,
+              references
             }
           );
         } catch (error) {

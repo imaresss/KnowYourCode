@@ -9,6 +9,7 @@ import { ModelSelectionService } from "../providers/modelSelector";
 import { SelectedModel } from "../core/types";
 import { normalizeExplanationResult, parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
 import { formatExplanationMarkdown } from "../ui/formatter";
+import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 
 export function createRunContextActionCommand(
   orchestrator: ExplanationOrchestrator,
@@ -85,15 +86,20 @@ export function createRunContextActionCommand(
             prompt,
             selection
           }, { forceRefresh });
+          const renderedMarkdown = renderPossiblyJsonExplanation(result.markdown);
 
           panel.show(
             `KYC: ${actionLabel(actionId)}`,
-            renderPossiblyJsonExplanation(result.markdown),
+            renderedMarkdown,
             {
               provider: meta.providerLabel,
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
-              cacheLabel: meta.cacheLabel
+              cacheLabel: meta.cacheLabel,
+              references: await resolveReferencesForCurrentEditor(
+                renderedMarkdown,
+                context
+              )
             }
           );
         } catch (error) {
@@ -108,6 +114,28 @@ export function createRunContextActionCommand(
       }
     );
   }
+}
+
+async function resolveReferencesForCurrentEditor(
+  markdown: string,
+  context: KycInteractionContext
+) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return [];
+  }
+  const seedIdentifiers = context.symbolContext
+    ? [
+      context.symbolContext.symbolName,
+      ...context.symbolContext.callers.map((item) => item.name),
+      ...context.symbolContext.callees.map((item) => item.name),
+      ...context.symbolContext.nearbySymbols.map((item) => item.name)
+    ]
+    : [];
+  return buildCodeReferenceMapForDocument(markdown, editor.document, {
+    focusedRange: editor.selection,
+    seedIdentifiers
+  });
 }
 
 function renderPossiblyJsonExplanation(markdownOrJson: string): string {

@@ -9,6 +9,7 @@ import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatCallFlowMarkdown, formatExplanationMarkdown } from "../ui/formatter";
 import { ExplainCallFlowInput, SelectedModel } from "../core/types";
+import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 
 export function createExplainCallFlowCommand(
   orchestrator: ExplanationOrchestrator,
@@ -81,6 +82,14 @@ export function createExplainCallFlowCommand(
             forceRefresh: options?.forceRefresh
           });
           const markdown = formatCallFlowMarkdown(result, context.symbolName);
+          const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
+            focusedRange: editor.selection,
+            seedIdentifiers: [
+              context.symbolName,
+              ...context.callers.map((item) => item.name),
+              ...context.callees.map((item) => item.name)
+            ]
+          });
           panel.show(
             `KYC: Call Flow — ${context.symbolName}${meta.cacheHit ? " (cached)" : ""}`,
             markdown,
@@ -88,7 +97,8 @@ export function createExplainCallFlowCommand(
               provider: meta.providerLabel,
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
-              cacheLabel: meta.cacheLabel
+              cacheLabel: meta.cacheLabel,
+              references
             }
           );
         } catch (error) {

@@ -8,6 +8,7 @@ import { formatProviderError } from "../core/providerErrors";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatExplanationMarkdown } from "../ui/formatter";
+import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 
 export function createRefreshExplanationCommand(
   orchestrator: ExplanationOrchestrator,
@@ -53,14 +54,25 @@ export function createRefreshExplanationCommand(
         try {
           const { result, meta } = await orchestrator.explainFunction(input, selection, { forceRefresh: true });
           void orchestrator.prefetchConnectedContexts(context, selection);
+          const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine);
+          const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
+            focusedRange: editor.selection,
+            seedIdentifiers: [
+              context.symbolName,
+              ...context.callers.map((item) => item.name),
+              ...context.callees.map((item) => item.name),
+              ...context.nearbySymbols.map((item) => item.name)
+            ]
+          });
           panel.show(
             `KYC: ${context.symbolName} (refreshed)`,
-            formatExplanationMarkdown(result, context.code, context.range.startLine),
+            markdown,
             {
               provider: meta.providerLabel,
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
-              cacheLabel: meta.cacheLabel
+              cacheLabel: meta.cacheLabel,
+              references
             }
           );
         } catch (error) {
