@@ -10,6 +10,7 @@ import { ExplanationPanel } from "../ui/panel";
 import { formatCallFlowMarkdown, formatExplanationMarkdown } from "../ui/formatter";
 import { ExplainCallFlowInput, SelectedModel } from "../core/types";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
+import { getTutorialRecommendations } from "../tutorials/recommendations";
 
 export function createExplainCallFlowCommand(
   orchestrator: ExplanationOrchestrator,
@@ -82,6 +83,7 @@ export function createExplainCallFlowCommand(
             forceRefresh: options?.forceRefresh
           });
           const markdown = formatCallFlowMarkdown(result, context.symbolName);
+          const tutorials = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [
@@ -98,7 +100,8 @@ export function createExplainCallFlowCommand(
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
-              references
+              references,
+              tutorials
             }
           );
         } catch (error) {

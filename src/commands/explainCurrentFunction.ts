@@ -10,6 +10,7 @@ import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatExplanationMarkdown } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
+import { getTutorialRecommendations } from "../tutorials/recommendations";
 
 export function createExplainCurrentFunctionCommand(
   orchestrator: ExplanationOrchestrator,
@@ -72,6 +73,7 @@ export function createExplainCurrentFunctionCommand(
           });
           void orchestrator.prefetchConnectedContexts(context, selection);
           const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine);
+          const tutorials = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [
@@ -89,7 +91,8 @@ export function createExplainCurrentFunctionCommand(
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
-              references
+              references,
+              tutorials
             }
           );
         } catch (error) {

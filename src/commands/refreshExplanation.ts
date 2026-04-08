@@ -9,6 +9,7 @@ import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
 import { formatExplanationMarkdown } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
+import { getTutorialRecommendations } from "../tutorials/recommendations";
 
 export function createRefreshExplanationCommand(
   orchestrator: ExplanationOrchestrator,
@@ -55,6 +56,7 @@ export function createRefreshExplanationCommand(
           const { result, meta } = await orchestrator.explainFunction(input, selection, { forceRefresh: true });
           void orchestrator.prefetchConnectedContexts(context, selection);
           const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine);
+          const tutorials = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [
@@ -72,7 +74,8 @@ export function createRefreshExplanationCommand(
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
-              references
+              references,
+              tutorials
             }
           );
         } catch (error) {

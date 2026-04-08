@@ -9,6 +9,7 @@ import { formatLineExplanationMarkdown } from "../ui/formatter";
 import { ExplainLineInput, SelectedModel } from "../core/types";
 import { sha256 } from "../utils/hash";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
+import { getTutorialRecommendations } from "../tutorials/recommendations";
 
 export function createExplainCurrentLineCommand(
   orchestrator: ExplanationOrchestrator,
@@ -85,6 +86,7 @@ export function createExplainCurrentLineCommand(
             forceRefresh: options?.forceRefresh
           });
           const markdown = formatLineExplanationMarkdown(result, lineText, lineNumber, enclosingName);
+          const tutorials = await getTutorialRecommendations(enclosingCode, input.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [enclosingName]
@@ -97,7 +99,8 @@ export function createExplainCurrentLineCommand(
               modelName: meta.modelName,
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
-              references
+              references,
+              tutorials
             }
           );
         } catch (error) {

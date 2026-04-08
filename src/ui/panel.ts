@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { CodeReferenceMapEntry } from "../core/codeReferences";
+import { TutorialRecommendation } from "../tutorials/recommendations";
 
 export interface PanelShowOptions {
   provider?: string;
@@ -7,6 +8,7 @@ export interface PanelShowOptions {
   cacheLabel?: string;
   modelName?: string;
   references?: CodeReferenceMapEntry[];
+  tutorials?: TutorialRecommendation[];
 }
 
 type MessageHandler = (message: { type: string; payload?: unknown }) => void;
@@ -117,6 +119,7 @@ function markdownToHtml(md: string): string {
 function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   const references = options.references ?? [];
   const contentHtml = annotateCodeReferences(markdownToHtml(markdown), references);
+  const tutorialsHtml = buildTutorialsHtml(options.tutorials ?? []);
   const referenceLookupJson = JSON.stringify(buildReferenceLookup(references))
     .replace(/</g, "\\u003c");
   const provider = options.provider ?? "unknown";
@@ -152,6 +155,7 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   <div class="content" id="content">
     ${contentHtml}
   </div>
+  ${tutorialsHtml}
   <script>
     const vscode = acquireVsCodeApi();
     const content = document.getElementById('content');
@@ -465,6 +469,63 @@ const CSS = `
     opacity: 0.6;
     font-size: 0.9em;
   }
+
+  .tutorials {
+    margin: 4px 24px 24px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--code-bg) 45%, transparent);
+  }
+
+  .tutorials-title {
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--warning);
+  }
+
+  .tutorial-item {
+    margin: 8px 0;
+    padding: 6px 0;
+    border-top: 1px dashed var(--border);
+  }
+
+  .tutorial-item:first-of-type {
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .tutorial-item-name {
+    font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+    color: var(--accent);
+    font-size: 12px;
+  }
+
+  .tutorial-item-summary {
+    margin: 2px 0 4px;
+    opacity: 0.85;
+    font-size: 12px;
+  }
+
+  .tutorial-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .tutorial-link {
+    font-size: 12px;
+    text-decoration: none;
+    color: var(--primary-fg);
+    background: var(--primary-bg);
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 2px 8px;
+  }
+
+  .tutorial-link:hover {
+    background: var(--primary-hover);
+  }
 `;
 
 function annotateCodeReferences(html: string, references: CodeReferenceMapEntry[]): string {
@@ -552,4 +613,35 @@ function buildReferenceLookup(references: CodeReferenceMapEntry[]): Record<strin
     lookup[id] = reference.occurrences;
   }
   return lookup;
+}
+
+function buildTutorialsHtml(tutorials: TutorialRecommendation[]): string {
+  if (tutorials.length === 0) {
+    return "";
+  }
+
+  const items = tutorials.map((tutorial) => {
+    const safeId = escapeHtml(tutorial.identifier);
+    const safeSummary = escapeHtml(tutorial.summary);
+    const links = tutorial.sources.map((source) => {
+      const name = escapeHtml(source.name);
+      const url = escapeHtml(source.url);
+      return `<a class="tutorial-link" href="${url}" target="_blank" rel="noopener noreferrer">Learn More - ${name}</a>`;
+    }).join("");
+
+    return `
+      <div class="tutorial-item">
+        <div class="tutorial-item-name">${safeId}</div>
+        <div class="tutorial-item-summary">${safeSummary}</div>
+        <div class="tutorial-links">${links}</div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <section class="tutorials">
+      <div class="tutorials-title">📚 Related Tutorials</div>
+      ${items}
+    </section>
+  `;
 }

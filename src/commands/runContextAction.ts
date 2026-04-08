@@ -10,6 +10,7 @@ import { SelectedModel } from "../core/types";
 import { normalizeExplanationResult, parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
 import { formatExplanationMarkdown } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
+import { getTutorialRecommendations } from "../tutorials/recommendations";
 
 export function createRunContextActionCommand(
   orchestrator: ExplanationOrchestrator,
@@ -99,7 +100,8 @@ export function createRunContextActionCommand(
               references: await resolveReferencesForCurrentEditor(
                 renderedMarkdown,
                 context
-              )
+              ),
+              tutorials: await getTutorialRecommendations(context.code, context.language)
             }
           );
         } catch (error) {
