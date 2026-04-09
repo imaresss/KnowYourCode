@@ -74,11 +74,10 @@ export class ExplanationOrchestrator {
 
     const incrementalConfig = this.config.incremental;
     if (incrementalConfig.enabled && !options.forceRefresh) {
-      const previous = this.repo.findLatestBySymbolKey(symbolKey);
+      const previous = this.repo.findLatestForSymbol(input.filePath, input.symbolName);
       if (
         previous &&
         previous.sourceCode &&
-        previous.explanationType === "explainFunction" &&
         previous.sourceCode !== input.code &&
         (previous.incrementalDepth ?? 0) < incrementalConfig.maxIncrementalDepth
       ) {

@@ -95,6 +95,27 @@ export class ExplanationRepository {
     return this.mapRowToRecord(row);
   }
 
+  public findLatestForSymbol(filePath: string, symbolName: string): StoredExplanation | undefined {
+    const pattern = `%::${filePath}::${symbolName}::%`;
+    const row = this.db
+      .prepare(
+        `SELECT symbol_key, explanation_type, content_hash, dependency_hash, model_name,
+                provider_mode, prompt_version, content_json, created_at, source_code, incremental_depth
+         FROM explanations
+         WHERE symbol_key LIKE ?
+           AND explanation_type = 'explainFunction'
+           AND source_code IS NOT NULL
+         ORDER BY created_at DESC
+         LIMIT 1`
+      )
+      .get(pattern) as Record<string, string | number | null> | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+    return this.mapRowToRecord(row);
+  }
+
   public invalidateSymbol(symbolKey: string): void {
     this.deleteMemoryEntries((entry) => entry.symbolKey === symbolKey);
     this.db
@@ -107,12 +128,6 @@ export class ExplanationRepository {
 
   public invalidateFile(filePath: string): void {
     this.deleteMemoryEntries((entry) => entry.symbolKey.includes(`::${filePath}::`));
-    this.db
-      .prepare(`DELETE FROM explanations WHERE symbol_key LIKE ?`)
-      .run(`%::${filePath}::%`);
-    this.db
-      .prepare(`DELETE FROM call_edges WHERE child_file_path = ? OR parent_symbol_key LIKE ?`)
-      .run(filePath, `%::${filePath}::%`);
   }
 
   public replaceCallEdges(symbolKey: string, callees: RelatedSymbol[]): void {
