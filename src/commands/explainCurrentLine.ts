@@ -23,13 +23,27 @@ export function createExplainCurrentLineCommand(
       return;
     }
 
-    const lineNumber = editor.selection.active.line + 1;
-    const lineText = editor.document.lineAt(editor.selection.active.line).text.trim();
+    const startLine = editor.selection.start.line;
+    const endLine = editor.selection.end.line;
+    const isMultiLine = startLine !== endLine;
 
-    if (!lineText) {
-      void vscode.window.showInformationMessage("The current line is empty.");
+    const lines: string[] = [];
+    for (let i = startLine; i <= endLine; i++) {
+      const text = editor.document.lineAt(i).text.trim();
+      if (text) {
+        lines.push(text);
+      }
+    }
+
+    if (lines.length === 0) {
+      void vscode.window.showInformationMessage("The selected line(s) are empty.");
       return;
     }
+
+    const lineNumber = startLine + 1;
+    const lineEndNumber = isMultiLine ? endLine + 1 : undefined;
+    const lineText = lines.join("\n");
+    const lineLabel = isMultiLine ? `Lines ${lineNumber}-${lineEndNumber}` : `Line ${lineNumber}`;
 
     const context = await resolveCurrentSymbolContext(editor);
     const enclosingCode = context?.code ?? editor.document.getText();
@@ -41,6 +55,7 @@ export function createExplainCurrentLineCommand(
       language: editor.document.languageId,
       lineText,
       lineNumber,
+      lineEndNumber,
       enclosingSymbolName: enclosingName,
       enclosingCode,
       imports,
@@ -48,7 +63,7 @@ export function createExplainCurrentLineCommand(
     };
     const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
-      placeHolder: `Choose a model to explain line ${lineNumber}`
+      placeHolder: `Choose a model to explain ${lineLabel.toLowerCase()}`
     });
     if (!selection) {
       return;
@@ -59,7 +74,7 @@ export function createExplainCurrentLineCommand(
         const rerunSelection = intent === "switchModel"
           ? await modelSelector.pickModel({
             title: "KYC: Switch AI Model",
-            placeHolder: `Choose a default model to re-explain line ${lineNumber}`,
+            placeHolder: `Choose a default model to re-explain ${lineLabel.toLowerCase()}`,
             forcePrompt: true,
             persistAsDefault: true
           })
@@ -77,7 +92,7 @@ export function createExplainCurrentLineCommand(
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `KYC: Explaining line ${lineNumber}...`,
+        title: `KYC: Explaining ${lineLabel.toLowerCase()}...`,
         cancellable: false
       },
       async () => {
@@ -91,8 +106,14 @@ export function createExplainCurrentLineCommand(
             focusedRange: editor.selection,
             seedIdentifiers: [enclosingName]
           });
+
+          const titleSuffix = meta.cacheHit
+            ? " (cached)"
+            : meta.derived
+              ? " (derived)"
+              : "";
           panel.show(
-            `KYC: Line ${lineNumber}${meta.cacheHit ? " (cached)" : ""}`,
+            `KYC: ${lineLabel}${titleSuffix}`,
             markdown,
             {
               provider: meta.providerLabel,
@@ -101,13 +122,15 @@ export function createExplainCurrentLineCommand(
               cacheLabel: meta.cacheLabel,
               references,
               tutorials,
-              tokenUsage: meta.tokenUsage
+              tokenUsage: meta.tokenUsage,
+              derived: meta.derived,
+              derivedFromFunction: meta.derivedFromFunction
             }
           );
         } catch (error) {
           const friendly = formatProviderError(error, selection.provider);
           panel.show(
-            `KYC: Line ${lineNumber} (error)`,
+            `KYC: ${lineLabel} (error)`,
             `# Line Explanation Failed\n\n\`${lineText}\`\n\n${friendly}`,
             { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
           );

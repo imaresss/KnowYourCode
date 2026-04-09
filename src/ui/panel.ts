@@ -12,6 +12,8 @@ export interface PanelShowOptions {
   incremental?: boolean;
   changedLines?: number;
   tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
+  derived?: boolean;
+  derivedFromFunction?: string;
 }
 
 type MessageHandler = (message: { type: string; payload?: unknown }) => void;
@@ -138,9 +140,14 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   const incrementalBadge = options.incremental
     ? `<span class="cache-badge incremental-badge" title="Only ${options.changedLines ?? "a few"} changed lines were sent to the model">⚡ Incremental (${options.changedLines ?? "?"} lines)</span>`
     : "";
-  const tokenBadge = options.tokenUsage
-    ? `<span class="token-badge" title="Prompt: ${options.tokenUsage.promptTokens} · Completion: ${options.tokenUsage.completionTokens}">🪙 ${formatTokenCount(options.tokenUsage.totalTokens)} tokens</span>`
+  const derivedBadge = options.derived
+    ? `<span class="cache-badge derived-badge" title="Derived from cached explanation of ${escapeHtml(options.derivedFromFunction ?? "function")} — 0 tokens used">🧠 Derived from ${escapeHtml(options.derivedFromFunction ?? "function")}</span>`
     : "";
+  const tokenBadge = options.derived
+    ? `<span class="token-badge token-badge-zero" title="No AI call made — derived from cached function explanation">🪙 0 tokens (free)</span>`
+    : options.tokenUsage
+      ? `<span class="token-badge" title="Prompt: ${options.tokenUsage.promptTokens} · Completion: ${options.tokenUsage.completionTokens}">🪙 ${formatTokenCount(options.tokenUsage.totalTokens)} tokens</span>`
+      : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -156,9 +163,13 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       <span class="model-badge">${escapeHtml(modelName)}</span>
       <span class="cache-badge ${options.cacheHit ? "cache-hit" : "cache-miss"}">${cacheLabel}</span>
       ${incrementalBadge}
+      ${derivedBadge}
     </div>
     <div class="toolbar-right">
       ${tokenBadge}
+      ${options.derived ? `<button class="btn btn-deep-explain" id="deepExplainBtn" title="Get a full AI-powered explanation with technical details and related concepts">
+        <span class="btn-icon">🔬</span> Deep Explain
+      </button>` : ""}
       <button class="btn" id="copyBtn" title="Copy explanation to clipboard">
         <span class="btn-icon">📋</span> Copy
       </button>
@@ -182,6 +193,13 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
     document.getElementById('copyBtn').addEventListener('click', () => {
       vscode.postMessage({ type: 'copy', payload: content.innerText });
     });
+
+    const deepExplainBtn = document.getElementById('deepExplainBtn');
+    if (deepExplainBtn) {
+      deepExplainBtn.addEventListener('click', () => {
+        vscode.postMessage({ type: 'deepExplain' });
+      });
+    }
 
     document.getElementById('regenerateBtn').addEventListener('click', () => {
       vscode.postMessage({ type: 'regenerate' });
@@ -352,6 +370,28 @@ const CSS = `
   .incremental-badge {
     background: #e8a317;
     color: #000;
+    font-weight: 600;
+  }
+
+  .derived-badge {
+    background: #9b59b6;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .btn-deep-explain {
+    background: #9b59b6;
+    color: #fff;
+  }
+
+  .btn-deep-explain:hover {
+    background: #8e44ad;
+  }
+
+  .token-badge-zero {
+    background: color-mix(in srgb, var(--success) 15%, transparent);
+    color: var(--success);
+    border-color: color-mix(in srgb, var(--success) 30%, transparent);
     font-weight: 600;
   }
 

@@ -25,6 +25,7 @@ import {
 import { buildSymbolKey } from "../intelligence/fingerprint";
 import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
 import { analyzeDiff, isIncrementalCandidate } from "../intelligence/diffAnalysis";
+import { deriveLineResult } from "../intelligence/lineDerivation";
 import { resolveConnectedSymbolContexts } from "../intelligence/symbolResolver";
 import { buildExplainCallFlowPrompt, buildExplainLinePrompt, buildIncrementalExplainPrompt } from "../providers/promptBuilder";
 import { createProviderForSelection, PROVIDER_DISPLAY_NAMES } from "../providers/providerFactory";
@@ -182,6 +183,13 @@ export class ExplanationOrchestrator {
       };
     }
 
+    if (!options.forceRefresh && input.enclosingSymbolName !== "file scope") {
+      const derived = this.tryDeriveLineFromFunction(input);
+      if (derived) {
+        return derived;
+      }
+    }
+
     return this.withInFlightDedup(lookup, async () => {
       const prompt = buildExplainLinePrompt(input);
       const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt);
@@ -199,6 +207,63 @@ export class ExplanationOrchestrator {
         meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
     });
+  }
+
+  public tryDeriveForSelection(
+    filePath: string,
+    enclosingFunctionName: string,
+    enclosingCode: string,
+    startLine: number,
+    endLine: number
+  ): { result: ExplainLineResult; functionName: string; meta: ExplanationPresentation } | undefined {
+    const cached = this.repo.findLatestForSymbol(filePath, enclosingFunctionName);
+    if (!cached || cached.explanationType !== "explainFunction") {
+      return undefined;
+    }
+
+    if (cached.sourceCode && cached.sourceCode !== enclosingCode) {
+      return undefined;
+    }
+
+    const funcResult = cached.result as ExplainFunctionResult;
+    const derived = deriveLineResult(funcResult, startLine, endLine);
+    if (!derived) {
+      return undefined;
+    }
+
+    logInfo(`Derived line ${startLine}${endLine !== startLine ? `-${endLine}` : ""} from cached explanation of ${enclosingFunctionName}`);
+
+    return {
+      result: derived,
+      functionName: enclosingFunctionName,
+      meta: {
+        cacheHit: false,
+        cacheLabel: "Derived",
+        modelName: cached.modelName,
+        provider: cached.provider,
+        providerLabel: PROVIDER_DISPLAY_NAMES[cached.provider],
+        createdAt: cached.createdAt,
+        derived: true,
+        derivedFromFunction: enclosingFunctionName,
+        tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+      }
+    };
+  }
+
+  private tryDeriveLineFromFunction(
+    input: ExplainLineInput
+  ): ExplanationResponse<ExplainLineResult> | undefined {
+    const result = this.tryDeriveForSelection(
+      input.filePath,
+      input.enclosingSymbolName,
+      input.enclosingCode,
+      input.lineNumber,
+      input.lineEndNumber ?? input.lineNumber
+    );
+    if (!result) {
+      return undefined;
+    }
+    return { result: result.result, meta: result.meta };
   }
 
   public async explainCallFlow(

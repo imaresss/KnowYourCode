@@ -8,7 +8,7 @@ import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { SelectedModel } from "../core/types";
 import { normalizeExplanationResult, parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
-import { formatExplanationMarkdown } from "../ui/formatter";
+import { formatExplanationMarkdown, formatLineExplanationMarkdown } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
 
@@ -70,6 +70,57 @@ export function createRunContextActionCommand(
     selection: SelectedModel,
     forceRefresh: boolean
   ): Promise<void> {
+    if (
+      !forceRefresh &&
+      actionId === "explainSelectedCode" &&
+      context.enclosingFunctionName &&
+      context.enclosingCode &&
+      context.selectionStartLine != null &&
+      context.selectionEndLine != null
+    ) {
+      const derived = orchestrator.tryDeriveForSelection(
+        context.filePath,
+        context.enclosingFunctionName,
+        context.enclosingCode,
+        context.selectionStartLine,
+        context.selectionEndLine
+      );
+      if (derived) {
+        const lineLabel = context.selectionStartLine === context.selectionEndLine
+          ? `Line ${context.selectionStartLine}`
+          : `Lines ${context.selectionStartLine}-${context.selectionEndLine}`;
+        const markdown = formatLineExplanationMarkdown(
+          derived.result,
+          context.code,
+          context.selectionStartLine,
+          derived.functionName
+        );
+        const editor = vscode.window.activeTextEditor;
+        const references = editor
+          ? await buildCodeReferenceMapForDocument(markdown, editor.document, {
+            focusedRange: editor.selection,
+            seedIdentifiers: [derived.functionName]
+          })
+          : [];
+        panel.show(
+          `KYC: ${lineLabel} (derived)`,
+          markdown,
+          {
+            provider: derived.meta.providerLabel,
+            modelName: derived.meta.modelName,
+            cacheHit: false,
+            cacheLabel: "Derived",
+            references,
+            tutorials: await getTutorialRecommendations(context.code, context.language),
+            tokenUsage: derived.meta.tokenUsage,
+            derived: true,
+            derivedFromFunction: derived.functionName
+          }
+        );
+        return;
+      }
+    }
+
     panel.showLoading(`KYC: ${actionLabel(actionId)}`, selection.providerLabel, selection.modelName);
     await vscode.window.withProgress(
       {

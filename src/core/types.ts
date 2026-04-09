@@ -35,6 +35,7 @@ export interface ExplainLineInput {
   language: string;
   lineText: string;
   lineNumber: number;
+  lineEndNumber?: number;
   enclosingSymbolName: string;
   enclosingCode: string;
   imports: string[];
@@ -138,6 +139,8 @@ export interface ExplanationPresentation {
   incrementalDepth?: number;
   changedLines?: number;
   tokenUsage?: TokenUsage;
+  derived?: boolean;
+  derivedFromFunction?: string;
 }
 
 export interface ExplanationResponse<T> {

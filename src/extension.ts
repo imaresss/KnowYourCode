@@ -46,6 +46,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           void vscode.commands.executeCommand("knowYourCode.switchProvider");
         }
         break;
+      case "deepExplain":
+        void vscode.commands.executeCommand("knowYourCode.explainLine", {
+          forceRefresh: true
+        });
+        break;
       case "highlightCode": {
         const payload = message.payload as {
           identifier?: string;
