@@ -86,11 +86,13 @@ export class ExplanationOrchestrator {
         if (lineCount >= incrementalConfig.minFunctionLines) {
           const diff = analyzeDiff(prevCode, input.code, incrementalConfig.contextLines);
           if (isIncrementalCandidate(diff, incrementalConfig)) {
-            logInfo(`Incremental explain for ${input.symbolName}: ${diff.changedLines} lines changed across ${diff.regionCount} region(s)`);
+            logInfo(`Incremental explain for ${input.symbolName}: ${diff.changedLines} lines changed, ${diff.regionCount} region(s), depth ${(previous.incrementalDepth ?? 0) + 1}`);
             const prev = previous;
             return this.withInFlightDedup(lookup, () =>
               this.runIncrementalExplain(input, selection, prev, diff, lookup)
             );
+          } else {
+            logInfo(`Incremental skipped for ${input.symbolName}: diff too large (${diff.changedLines} lines, ${diff.regionCount} regions, ratio ${diff.changeRatio.toFixed(2)})`);
           }
         }
       }
