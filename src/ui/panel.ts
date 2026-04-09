@@ -11,6 +11,7 @@ export interface PanelShowOptions {
   tutorials?: TutorialRecommendation[];
   incremental?: boolean;
   changedLines?: number;
+  tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
 type MessageHandler = (message: { type: string; payload?: unknown }) => void;
@@ -63,6 +64,13 @@ export class ExplanationPanel {
       }
     });
   }
+}
+
+function formatTokenCount(count: number): string {
+  if (count >= 1000) {
+    return `${(count / 1000).toFixed(1)}k`;
+  }
+  return String(count);
 }
 
 function escapeHtml(text: string): string {
@@ -130,6 +138,9 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   const incrementalBadge = options.incremental
     ? `<span class="cache-badge incremental-badge" title="Only ${options.changedLines ?? "a few"} changed lines were sent to the model">⚡ Incremental (${options.changedLines ?? "?"} lines)</span>`
     : "";
+  const tokenBadge = options.tokenUsage
+    ? `<span class="token-badge" title="Prompt: ${options.tokenUsage.promptTokens} · Completion: ${options.tokenUsage.completionTokens}">🪙 ${formatTokenCount(options.tokenUsage.totalTokens)} tokens</span>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -147,6 +158,7 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       ${incrementalBadge}
     </div>
     <div class="toolbar-right">
+      ${tokenBadge}
       <button class="btn" id="copyBtn" title="Copy explanation to clipboard">
         <span class="btn-icon">📋</span> Copy
       </button>
@@ -341,6 +353,17 @@ const CSS = `
     background: #e8a317;
     color: #000;
     font-weight: 600;
+  }
+
+  .token-badge {
+    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    color: var(--accent);
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    cursor: default;
   }
 
   .btn {

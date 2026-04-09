@@ -1,10 +1,11 @@
-import { ExplainFunctionInput, ExplainFunctionResult } from "../core/types";
+import { ExplainFunctionInput, ExplainFunctionResult, TokenUsage } from "../core/types";
 import { ModelProvider } from "./modelProvider";
 import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
 
 export class LocalProvider implements ModelProvider {
   public readonly name = "local";
+  public tokenUsage?: TokenUsage;
 
   public constructor(
     private readonly endpoint: string,
@@ -38,7 +39,18 @@ export class LocalProvider implements ModelProvider {
     const payload = (await response.json()) as {
       response?: string;
       output?: unknown;
+      prompt_eval_count?: number;
+      eval_count?: number;
     };
+    const promptTokens = payload.prompt_eval_count ?? 0;
+    const completionTokens = payload.eval_count ?? 0;
+    if (promptTokens > 0 || completionTokens > 0) {
+      this.tokenUsage = {
+        promptTokens,
+        completionTokens,
+        totalTokens: promptTokens + completionTokens
+      };
+    }
     const raw = payload.response ?? payload.output;
     if (!raw) {
       throw new Error("Local provider returned no response field");

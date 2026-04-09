@@ -1,4 +1,4 @@
-import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks } from "../core/types";
+import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks, TokenUsage } from "../core/types";
 import { ModelProvider } from "./modelProvider";
 import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
@@ -7,11 +7,13 @@ interface GeminiResponse {
   candidates?: Array<{
     content?: { parts?: Array<{ text?: string }> };
   }>;
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
   error?: { message?: string; code?: number };
 }
 
 export class GeminiProvider implements ModelProvider {
   public readonly name = "gemini";
+  public tokenUsage?: TokenUsage;
 
   public constructor(
     private readonly endpoint: string,
@@ -80,6 +82,13 @@ export class GeminiProvider implements ModelProvider {
               accumulated += text;
               callbacks.onChunk(text);
             }
+            if (event.usageMetadata) {
+              this.tokenUsage = {
+                promptTokens: event.usageMetadata.promptTokenCount ?? 0,
+                completionTokens: event.usageMetadata.candidatesTokenCount ?? 0,
+                totalTokens: event.usageMetadata.totalTokenCount ?? 0
+              };
+            }
           } catch { /* skip malformed SSE lines */ }
         }
       }
@@ -126,6 +135,14 @@ export class GeminiProvider implements ModelProvider {
     const payload = (await response.json()) as GeminiResponse;
     if (payload.error) {
       throw new Error(`Gemini API error: ${payload.error.message ?? "Unknown"}`);
+    }
+
+    if (payload.usageMetadata) {
+      this.tokenUsage = {
+        promptTokens: payload.usageMetadata.promptTokenCount ?? 0,
+        completionTokens: payload.usageMetadata.candidatesTokenCount ?? 0,
+        totalTokens: payload.usageMetadata.totalTokenCount ?? 0
+      };
     }
 
     const text = payload.candidates?.[0]?.content?.parts

@@ -1,4 +1,4 @@
-import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks } from "../core/types";
+import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks, TokenUsage } from "../core/types";
 import { ModelProvider } from "./modelProvider";
 import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
@@ -8,11 +8,13 @@ interface OpenAIResponse {
     message?: { content?: string };
     delta?: { content?: string };
   }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
   error?: { message?: string };
 }
 
 export class OpenAIProvider implements ModelProvider {
   public readonly name = "openai";
+  public tokenUsage?: TokenUsage;
 
   public constructor(
     private readonly endpoint: string,
@@ -41,6 +43,7 @@ export class OpenAIProvider implements ModelProvider {
           model: this.modelName,
           max_tokens: 2048,
           stream: true,
+          stream_options: { include_usage: true },
           messages: [
             { role: "system", content: "You are an expert code analyst. Respond with well-structured JSON." },
             { role: "user", content: prompt }
@@ -88,6 +91,13 @@ export class OpenAIProvider implements ModelProvider {
               accumulated += delta;
               callbacks.onChunk(delta);
             }
+            if (event.usage) {
+              this.tokenUsage = {
+                promptTokens: event.usage.prompt_tokens ?? 0,
+                completionTokens: event.usage.completion_tokens ?? 0,
+                totalTokens: event.usage.total_tokens ?? 0
+              };
+            }
           } catch { /* skip malformed SSE lines */ }
         }
       }
@@ -133,6 +143,13 @@ export class OpenAIProvider implements ModelProvider {
 
   private async extractNonStreamResponse(response: Response): Promise<string> {
     const payload = (await response.json()) as OpenAIResponse;
+    if (payload.usage) {
+      this.tokenUsage = {
+        promptTokens: payload.usage.prompt_tokens ?? 0,
+        completionTokens: payload.usage.completion_tokens ?? 0,
+        totalTokens: payload.usage.total_tokens ?? 0
+      };
+    }
     const text = payload.choices?.[0]?.message?.content?.trim();
     if (!text) {
       throw new Error("OpenAI API returned empty response");

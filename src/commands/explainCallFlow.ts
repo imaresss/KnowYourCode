@@ -101,7 +101,8 @@ export function createExplainCallFlowCommand(
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
               references,
-              tutorials
+              tutorials,
+              tokenUsage: meta.tokenUsage
             }
           );
         } catch (error) {

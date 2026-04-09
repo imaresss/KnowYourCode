@@ -19,7 +19,8 @@ import {
   SelectedModel,
   StoredExplanation,
   StreamCallbacks,
-  SymbolContext
+  SymbolContext,
+  TokenUsage
 } from "./types";
 import { buildSymbolKey } from "../intelligence/fingerprint";
 import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
@@ -112,7 +113,7 @@ export class ExplanationOrchestrator {
       this.repo.save(record);
       return {
         result,
-        meta: this.buildPresentation(false, record)
+        meta: { ...this.buildPresentation(false, record), tokenUsage: provider.tokenUsage }
       };
     });
   }
@@ -126,7 +127,7 @@ export class ExplanationOrchestrator {
   ): Promise<ExplanationResponse<ExplainFunctionResult>> {
     const previousResult = previous.result as ExplainFunctionResult;
     const prompt = buildIncrementalExplainPrompt(input, previousResult, diff);
-    const raw = await this.callProviderRaw(selection, prompt);
+    const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt);
     const result = parseIncrementalResult(raw, previousResult);
     const newDepth = (previous.incrementalDepth ?? 0) + 1;
 
@@ -148,7 +149,8 @@ export class ExplanationOrchestrator {
         ...this.buildPresentation(false, record),
         incremental: true,
         incrementalDepth: newDepth,
-        changedLines: diff.changedLines
+        changedLines: diff.changedLines,
+        tokenUsage
       }
     };
   }
@@ -181,7 +183,7 @@ export class ExplanationOrchestrator {
 
     return this.withInFlightDedup(lookup, async () => {
       const prompt = buildExplainLinePrompt(input);
-      const raw = await this.callProviderRaw(selection, prompt);
+      const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt);
       const result = parseLineResult(raw);
 
       const record: StoredExplanation = {
@@ -193,7 +195,7 @@ export class ExplanationOrchestrator {
       this.repo.save(record);
       return {
         result,
-        meta: this.buildPresentation(false, record)
+        meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
     });
   }
@@ -226,7 +228,7 @@ export class ExplanationOrchestrator {
 
     return this.withInFlightDedup(lookup, async () => {
       const prompt = buildExplainCallFlowPrompt(input);
-      const raw = await this.callProviderRaw(selection, prompt);
+      const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt);
       const result = parseCallFlowResult(raw);
 
       const record: StoredExplanation = {
@@ -238,7 +240,7 @@ export class ExplanationOrchestrator {
       this.repo.save(record);
       return {
         result,
-        meta: this.buildPresentation(false, record)
+        meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
     });
   }
@@ -271,7 +273,7 @@ export class ExplanationOrchestrator {
     }
 
     return this.withInFlightDedup(lookup, async () => {
-      const raw = await this.callProviderRaw(input.selection, input.prompt);
+      const { text: raw, tokenUsage } = await this.callProviderRaw(input.selection, input.prompt);
       const record: StoredExplanation = {
         ...lookup,
         explanationType: "contextAction",
@@ -283,7 +285,7 @@ export class ExplanationOrchestrator {
       this.repo.save(record);
       return {
         result: record.result as GenericMarkdownResult,
-        meta: this.buildPresentation(false, record)
+        meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
     });
   }
@@ -335,7 +337,7 @@ export class ExplanationOrchestrator {
     };
   }
 
-  private async callProviderRaw(selection: SelectedModel, prompt: string): Promise<string> {
+  private async callProviderRaw(selection: SelectedModel, prompt: string): Promise<{ text: string; tokenUsage?: TokenUsage }> {
     const provider = createProviderForSelection(selection);
     if (provider.streamRaw) {
       let accumulated = "";
@@ -344,7 +346,7 @@ export class ExplanationOrchestrator {
         onDone: () => {},
         onError: () => {}
       });
-      return accumulated;
+      return { text: accumulated, tokenUsage: provider.tokenUsage };
     }
 
     const dummyInput = {
@@ -355,7 +357,7 @@ export class ExplanationOrchestrator {
       range: { startLine: 0, endLine: 0 }
     };
     const result = await provider.explainFunction(dummyInput);
-    return JSON.stringify(result);
+    return { text: JSON.stringify(result), tokenUsage: provider.tokenUsage };
   }
 
   private getCacheTtlMs(): number {

@@ -1,15 +1,17 @@
-import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks } from "../core/types";
+import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks, TokenUsage } from "../core/types";
 import { ModelProvider } from "./modelProvider";
 import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
 
 interface AnthropicMessageResponse {
   content?: Array<{ type?: string; text?: string }>;
+  usage?: { input_tokens?: number; output_tokens?: number };
   error?: { type?: string; message?: string };
 }
 
 export class ClaudeProvider implements ModelProvider {
   public readonly name = "claude";
+  public tokenUsage?: TokenUsage;
 
   public constructor(
     private readonly endpoint: string,
@@ -56,6 +58,8 @@ export class ClaudeProvider implements ModelProvider {
     }
 
     let accumulated = "";
+    let inputTokens = 0;
+    let outputTokens = 0;
     const reader = response.body?.getReader();
     if (!reader) {
       const text = await this.extractNonStreamResponse(response);
@@ -82,11 +86,25 @@ export class ClaudeProvider implements ModelProvider {
               accumulated += event.delta.text;
               callbacks.onChunk(event.delta.text);
             }
+            if (event.type === "message_start" && event.message?.usage) {
+              inputTokens = event.message.usage.input_tokens ?? 0;
+            }
+            if (event.type === "message_delta" && event.usage) {
+              outputTokens = event.usage.output_tokens ?? 0;
+            }
           } catch { /* skip malformed SSE lines */ }
         }
       }
     } finally {
       reader.releaseLock();
+    }
+
+    if (inputTokens > 0 || outputTokens > 0) {
+      this.tokenUsage = {
+        promptTokens: inputTokens,
+        completionTokens: outputTokens,
+        totalTokens: inputTokens + outputTokens
+      };
     }
 
     callbacks.onDone();
@@ -125,6 +143,15 @@ export class ClaudeProvider implements ModelProvider {
 
   private async extractNonStreamResponse(response: Response): Promise<string> {
     const payload = (await response.json()) as AnthropicMessageResponse;
+    if (payload.usage) {
+      const input = payload.usage.input_tokens ?? 0;
+      const output = payload.usage.output_tokens ?? 0;
+      this.tokenUsage = {
+        promptTokens: input,
+        completionTokens: output,
+        totalTokens: input + output
+      };
+    }
     const text = (payload.content ?? [])
       .filter((c) => c.type === "text" && Boolean(c.text))
       .map((c) => c.text ?? "")

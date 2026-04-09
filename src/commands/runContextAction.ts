@@ -101,7 +101,8 @@ export function createRunContextActionCommand(
                 renderedMarkdown,
                 context
               ),
-              tutorials: await getTutorialRecommendations(context.code, context.language)
+              tutorials: await getTutorialRecommendations(context.code, context.language),
+              tokenUsage: meta.tokenUsage
             }
           );
         } catch (error) {

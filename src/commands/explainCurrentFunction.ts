@@ -99,7 +99,8 @@ export function createExplainCurrentFunctionCommand(
               references,
               tutorials,
               incremental: meta.incremental,
-              changedLines: meta.changedLines
+              changedLines: meta.changedLines,
+              tokenUsage: meta.tokenUsage
             }
           );
         } catch (error) {

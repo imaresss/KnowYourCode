@@ -137,6 +137,7 @@ export interface ExplanationPresentation {
   incremental?: boolean;
   incrementalDepth?: number;
   changedLines?: number;
+  tokenUsage?: TokenUsage;
 }
 
 export interface ExplanationResponse<T> {
@@ -192,6 +193,12 @@ export interface SelectedModel {
   modelName: string;
   endpoint: string;
   apiKey: string;
+}
+
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
 }
 
 export interface StreamCallbacks {
