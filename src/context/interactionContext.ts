@@ -22,6 +22,8 @@ export interface KycInteractionContext {
   anchorLine: number;
   symbolContext?: SymbolContext;
   selectionKind?: SelectionKind;
+  /** Always set when the selection/cursor is inside a function, regardless of selectionKind. */
+  enclosingFunction?: SymbolContext;
 }
 
 export async function resolveInteractionContext(
@@ -57,7 +59,8 @@ export async function resolveInteractionContext(
         : `Selection (${Math.max(1, endLine - startLine + 1)} line${endLine === startLine ? "" : "s"})`,
       anchorLine: selection.start.line,
       symbolContext: selectionKind === "fullFunction" ? enclosing ?? undefined : undefined,
-      selectionKind
+      selectionKind,
+      enclosingFunction: enclosing ?? undefined
     };
   }
 
@@ -78,7 +81,8 @@ export async function resolveInteractionContext(
     dependencyHash: explainInput.dependencyHash,
     displayName: symbolContext.symbolName,
     anchorLine: Math.max(0, symbolContext.range.startLine - 1),
-    symbolContext
+    symbolContext,
+    enclosingFunction: symbolContext
   };
 }
 

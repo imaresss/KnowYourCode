@@ -3,6 +3,16 @@ ALTER TABLE explanations ADD COLUMN source_code TEXT;
 ALTER TABLE explanations ADD COLUMN incremental_depth INTEGER DEFAULT 0;
 `;
 
+export const MIGRATION_V3_SQL = `
+CREATE TABLE IF NOT EXISTS tutorial_cache (
+  code_hash TEXT NOT NULL,
+  language TEXT NOT NULL,
+  tutorials_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (code_hash, language)
+);
+`;
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS explanations (
   symbol_key TEXT NOT NULL,

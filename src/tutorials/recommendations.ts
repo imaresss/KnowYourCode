@@ -1,4 +1,6 @@
 import { sha256 } from "../utils/hash";
+import { TutorialRepository } from "../cache/tutorialRepo";
+import { logInfo } from "../utils/logger";
 
 export interface TutorialSource {
   name: string;
@@ -10,6 +12,11 @@ export interface TutorialRecommendation {
   language: string;
   summary: string;
   sources: TutorialSource[];
+}
+
+export interface TutorialResult {
+  tutorials: TutorialRecommendation[];
+  fromCache: boolean;
 }
 
 interface TutorialCatalogEntry {
@@ -32,7 +39,54 @@ interface CandidateScan {
 
 const recommendationCache = new Map<string, TutorialRecommendation[]>();
 const detectionCache = new Map<string, DetectionSnapshot>();
-const inFlight = new Map<string, Promise<TutorialRecommendation[]>>();
+const inFlight = new Map<string, Promise<TutorialResult>>();
+
+let persistentRepo: TutorialRepository | undefined;
+
+/**
+ * Global method map: language → lowercased method → TutorialRecommendation.
+ * Pre-warmed from static catalogs for instant cross-code lookups.
+ */
+const globalMethodMap = new Map<string, Map<string, TutorialRecommendation>>();
+
+export function initTutorialCache(repo: TutorialRepository): void {
+  persistentRepo = repo;
+  warmGlobalMethodMap();
+}
+
+function warmGlobalMethodMap(): void {
+  const catalogs: Record<string, Record<string, TutorialCatalogEntry>> = {
+    javascript: JS_TS_CATALOG,
+    typescript: JS_TS_CATALOG,
+    python: PYTHON_CATALOG,
+    java: JAVA_CATALOG
+  };
+
+  for (const [lang, catalog] of Object.entries(catalogs)) {
+    const langMap = new Map<string, TutorialRecommendation>();
+    for (const [canonical, entry] of Object.entries(catalog)) {
+      const rec: TutorialRecommendation = {
+        identifier: canonical,
+        language: lang,
+        summary: entry.summary,
+        sources: entry.sources
+      };
+      langMap.set(canonical.toLowerCase(), rec);
+      for (const alias of entry.aliases ?? []) {
+        langMap.set(alias.toLowerCase(), rec);
+      }
+    }
+    globalMethodMap.set(lang, langMap);
+  }
+}
+
+/**
+ * Look up a single built-in method by name from the global cache.
+ * Zero computation — instant O(1) lookup.
+ */
+export function lookupGlobalTutorial(methodName: string, language: string): TutorialRecommendation | undefined {
+  return globalMethodMap.get(normalizeLanguage(language))?.get(methodName.toLowerCase());
+}
 
 const JS_TS_CATALOG: Record<string, TutorialCatalogEntry> = {
   "Array.map": {
@@ -197,31 +251,96 @@ const EXTRA_LANGUAGE_BUILTINS: Record<string, string[]> = {
   swift: ["map", "filter", "reduce", "forEach", "compactMap", "flatMap", "print", "guard", "if let"]
 };
 
-export async function getTutorialRecommendations(code: string, language: string): Promise<TutorialRecommendation[]> {
+export interface TutorialLookupOptions {
+  /** Code of the enclosing function (enables function→selection cache reuse). */
+  enclosingFunctionCode?: string;
+}
+
+export async function getTutorialRecommendations(
+  code: string,
+  language: string,
+  options?: TutorialLookupOptions
+): Promise<TutorialResult> {
   const normalizedLanguage = normalizeLanguage(language);
   const hash = sha256(code);
   const key = `${normalizedLanguage}:${hash}`;
-  const cached = recommendationCache.get(key);
-  if (cached) {
-    return cached;
+
+  // Layer 1: In-memory cache (instant).
+  const memoryCached = recommendationCache.get(key);
+  if (memoryCached) {
+    return { tutorials: memoryCached, fromCache: true };
   }
 
+  // Layer 2: Function→selection reuse — if the enclosing function's tutorials
+  // are cached, filter them for this selection instead of re-scanning.
+  if (options?.enclosingFunctionCode && options.enclosingFunctionCode !== code) {
+    const reused = tryReuseFunctionTutorials(options.enclosingFunctionCode, code, normalizedLanguage);
+    if (reused) {
+      recommendationCache.set(key, reused);
+      return { tutorials: reused, fromCache: true };
+    }
+  }
+
+  // Layer 3: Persistent DB cache (survives restarts).
+  if (persistentRepo) {
+    const dbCached = persistentRepo.find(hash, normalizedLanguage);
+    if (dbCached) {
+      recommendationCache.set(key, dbCached);
+      logInfo(`Tutorial cache hit (DB): ${normalizedLanguage} ${dbCached.length} tutorial(s)`);
+      return { tutorials: dbCached, fromCache: true };
+    }
+  }
+
+  // Layer 4: Dedup in-flight requests.
   const running = inFlight.get(key);
   if (running) {
     return running;
   }
 
-  const request = Promise.resolve(
-    buildRecommendations(code, normalizedLanguage, hash)
-  );
+  const request = Promise.resolve().then(() => {
+    const recommendations = buildRecommendations(code, normalizedLanguage, hash);
+    recommendationCache.set(key, recommendations);
+    persistentRepo?.save(hash, normalizedLanguage, recommendations);
+    return { tutorials: recommendations, fromCache: false } as TutorialResult;
+  });
+
   inFlight.set(key, request);
   try {
-    const recommendations = await request;
-    recommendationCache.set(key, recommendations);
-    return recommendations;
+    return await request;
   } finally {
     inFlight.delete(key);
   }
+}
+
+/**
+ * Reuse a cached function's tutorials for a selection within that function.
+ * Filters tutorials to only those whose identifiers appear in the selected code.
+ */
+function tryReuseFunctionTutorials(
+  functionCode: string,
+  selectedCode: string,
+  language: string
+): TutorialRecommendation[] | undefined {
+  const fnHash = sha256(functionCode);
+  const fnKey = `${language}:${fnHash}`;
+  const functionTutorials = recommendationCache.get(fnKey) ?? persistentRepo?.find(fnHash, language);
+  if (!functionTutorials || functionTutorials.length === 0) {
+    return undefined;
+  }
+
+  const selectedLower = selectedCode.toLowerCase();
+  const relevant = functionTutorials.filter((t) => {
+    const idLower = t.identifier.toLowerCase();
+    const leaf = idLower.includes(".") ? idLower.split(".").pop()! : idLower;
+    return selectedLower.includes(leaf) || selectedLower.includes(idLower);
+  });
+
+  if (relevant.length === 0) {
+    return undefined;
+  }
+
+  logInfo(`Tutorial function→selection reuse: ${relevant.length}/${functionTutorials.length} tutorial(s)`);
+  return relevant;
 }
 
 function buildRecommendations(code: string, language: string, hash: string): TutorialRecommendation[] {

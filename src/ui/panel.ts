@@ -9,6 +9,7 @@ export interface PanelShowOptions {
   modelName?: string;
   references?: CodeReferenceMapEntry[];
   tutorials?: TutorialRecommendation[];
+  tutorialsCached?: boolean;
   incremental?: boolean;
   changedLines?: number;
   tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
@@ -98,7 +99,7 @@ function markdownToHtml(md: string): string {
 
   html = html.replace(/^# (.+)$/gm, '<h1 class="title">$1</h1>');
   html = html.replace(/^## (.+)$/gm, '<h2 class="section-title">$1</h2>');
-  html = html.replace(/^### (.+)$/gm, '<h3>$3</h3>');
+  html = html.replace(/^### (.+)$/gm, (_match, content: string) => formatChildHeading(content));
 
   html = html.replace(/```\n([\s\S]*?)```/g, '<pre class="code-block"><code>$1</code></pre>');
   html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
@@ -138,10 +139,21 @@ function markdownToHtml(md: string): string {
   return html;
 }
 
+function formatChildHeading(content: string): string {
+  const badgeMatch = content.match(/^(.+?)\s*\((Cached|Generated|Skipped|External)\)\s*$/);
+  if (!badgeMatch) {
+    return `<h3>${content}</h3>`;
+  }
+  const name = badgeMatch[1].trim();
+  const status = badgeMatch[2].toLowerCase();
+  const badgeClass = `child-badge child-badge-${status}`;
+  return `<h3>${name} <span class="${badgeClass}">${badgeMatch[2]}</span></h3>`;
+}
+
 function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   const references = options.references ?? [];
   const contentHtml = annotateCodeReferences(markdownToHtml(markdown), references);
-  const tutorialsHtml = buildTutorialsHtml(options.tutorials ?? []);
+  const tutorialsHtml = buildTutorialsHtml(options.tutorials ?? [], options.tutorialsCached);
   const referenceLookupJson = JSON.stringify(buildReferenceLookup(references))
     .replace(/</g, "\\u003c");
   const provider = options.provider ?? "unknown";
@@ -243,6 +255,23 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       const lineNumber = Number(match[1]);
       return Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined;
     }
+
+    window.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const explainBtn = target.closest('.child-explain-btn');
+      if (explainBtn instanceof HTMLElement && explainBtn.dataset.name && explainBtn.dataset.file) {
+        vscode.postMessage({
+          type: 'explainChild',
+          payload: {
+            symbolName: explainBtn.dataset.name,
+            filePath: explainBtn.dataset.file
+          }
+        });
+      }
+    });
   </script>
 </body>
 </html>`;
@@ -601,6 +630,56 @@ const CSS = `
     line-height: 1;
   }
 
+  h3 .child-badge {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    vertical-align: middle;
+    margin-left: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  h3 .child-badge-cached {
+    background: var(--success);
+    color: #000;
+  }
+
+  h3 .child-badge-generated {
+    background: #e8a317;
+    color: #000;
+  }
+
+  h3 .child-badge-external {
+    background: var(--badge-bg);
+    color: var(--badge-fg);
+  }
+
+  h3 .child-badge-skipped {
+    background: #7f1d1d;
+    color: #fff;
+  }
+
+  .child-explain-btn {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 1px 8px;
+    background: var(--primary-bg);
+    color: var(--primary-fg);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    vertical-align: middle;
+    transition: background 0.15s;
+  }
+
+  .child-explain-btn:hover {
+    background: var(--primary-hover);
+  }
+
   .tutorials {
     margin: 4px 24px 24px;
     padding: 14px 16px;
@@ -746,10 +825,16 @@ function buildReferenceLookup(references: CodeReferenceMapEntry[]): Record<strin
   return lookup;
 }
 
-function buildTutorialsHtml(tutorials: TutorialRecommendation[]): string {
+function buildTutorialsHtml(tutorials: TutorialRecommendation[], fromCache?: boolean): string {
   if (tutorials.length === 0) {
     return "";
   }
+
+  const cacheBadge = fromCache !== undefined
+    ? (fromCache
+      ? '<span class="cache-badge cache-hit" style="margin-left:8px;font-size:10px">Cached</span>'
+      : '<span class="cache-badge cache-miss" style="margin-left:8px;font-size:10px">Generated</span>')
+    : "";
 
   const items = tutorials.map((tutorial) => {
     const safeId = escapeHtml(tutorial.identifier);
@@ -771,7 +856,7 @@ function buildTutorialsHtml(tutorials: TutorialRecommendation[]): string {
 
   return `
     <section class="tutorials">
-      <div class="tutorials-title">📚 Related Tutorials</div>
+      <div class="tutorials-title">📚 Related Tutorials ${cacheBadge}</div>
       ${items}
     </section>
   `;

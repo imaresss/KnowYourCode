@@ -75,7 +75,7 @@ export function createRefreshExplanationCommand(
             callees: context.callees
           };
           const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine, callGraph);
-          const tutorials = await getTutorialRecommendations(context.code, context.language);
+          const tutorialResult = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [
@@ -94,7 +94,8 @@ export function createRefreshExplanationCommand(
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
               references,
-              tutorials
+              tutorials: tutorialResult.tutorials,
+              tutorialsCached: tutorialResult.fromCache
             }
           );
         } catch (error) {

@@ -866,6 +866,44 @@ function extractImports(source: string): string[] {
     .slice(0, MAX_IMPORTS);
 }
 
+export async function resolveCalleeContexts(
+  callees: RelatedSymbol[],
+  limit = 10
+): Promise<Map<string, SymbolContext>> {
+  const results = new Map<string, SymbolContext>();
+  const seen = new Set<string>();
+
+  for (const callee of callees.slice(0, limit)) {
+    const dedupeKey = `${callee.name}::${callee.filePath}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+
+    try {
+      const uri = vscode.Uri.file(callee.filePath);
+      const document = await vscode.workspace.openTextDocument(uri);
+      const symbols = await getDocumentSymbols(uri);
+      const candidate = flattenSymbols(symbols).find((s) => s.name === callee.name);
+      if (!candidate) {
+        continue;
+      }
+      const pathToSymbol = findPathByRange(symbols, candidate.range, []);
+      if (!pathToSymbol.length) {
+        continue;
+      }
+      const context = await buildSymbolContext(document, pathToSymbol);
+      if (context) {
+        results.set(callee.name, context);
+      }
+    } catch {
+      // best-effort: skip callees that can't be resolved
+    }
+  }
+
+  return results;
+}
+
 export function buildRelatedSymbolSummary(symbol: RelatedSymbol): string {
   return `${symbol.name} (${path.basename(symbol.filePath)})`;
 }

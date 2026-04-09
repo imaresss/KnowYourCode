@@ -95,7 +95,7 @@ export function createExplainCallFlowCommand(
             signal: activeRequest.controller.signal
           });
           const markdown = formatCallFlowMarkdown(result, context.symbolName);
-          const tutorials = await getTutorialRecommendations(context.code, context.language);
+          const tutorialResult = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [
@@ -113,7 +113,8 @@ export function createExplainCallFlowCommand(
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
               references,
-              tutorials,
+              tutorials: tutorialResult.tutorials,
+              tutorialsCached: tutorialResult.fromCache,
               tokenUsage: meta.tokenUsage
             }
           );

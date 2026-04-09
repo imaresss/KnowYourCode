@@ -331,6 +331,30 @@ export class ExplanationOrchestrator {
     }
   }
 
+  public findCachedFunctionExplanation(
+    symbolKey: string,
+    contentHash: string
+  ): { result: ExplainFunctionResult; stored: StoredExplanation } | undefined {
+    const stored = this.repo.findLatestBySymbolKey(symbolKey);
+    if (!stored) {
+      return undefined;
+    }
+    if (stored.explanationType !== "explainFunction") {
+      return undefined;
+    }
+    if (stored.contentHash !== contentHash) {
+      return undefined;
+    }
+    const ttlMs = this.getCacheTtlMs();
+    if (ttlMs > 0) {
+      const createdMs = Date.parse(stored.createdAt);
+      if (Number.isFinite(createdMs) && Date.now() - createdMs > ttlMs) {
+        return undefined;
+      }
+    }
+    return { result: stored.result as ExplainFunctionResult, stored };
+  }
+
   public getConnectedCalls(context: SymbolContext): ConnectedCallsSnapshot {
     const symbolKey = buildSymbolKey(context);
     return {

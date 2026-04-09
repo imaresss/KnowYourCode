@@ -173,6 +173,22 @@ export interface ConnectedCallsSnapshot {
   cachedCallees: RelatedSymbol[];
 }
 
+export interface ChildExplanation {
+  symbolName: string;
+  filePath: string;
+  source: "cache" | "generated" | "skipped" | "external";
+  result?: ExplainFunctionResult;
+  signature?: string;
+  error?: string;
+}
+
+export interface HierarchicalExplanationResult {
+  parent: ExplainFunctionResult;
+  parentSource: "cache" | "generated";
+  children: ChildExplanation[];
+  depth: number;
+}
+
 export interface ProviderSettings {
   enabled: boolean;
   apiKey: string;

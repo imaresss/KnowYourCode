@@ -1,9 +1,11 @@
 import * as path from "path";
 import {
+  ChildExplanation,
   ConnectedCallsSnapshot,
   ExplainCallFlowResult,
   ExplainFunctionResult,
   ExplainLineResult,
+  HierarchicalExplanationResult,
   RelatedSymbol
 } from "../core/types";
 
@@ -184,4 +186,114 @@ export function formatConnectedCallsMarkdown(snapshot: ConnectedCallsSnapshot): 
 function formatRelatedSymbol(symbol: RelatedSymbol): string {
   const file = path.basename(symbol.filePath);
   return `\`${symbol.name}\`${symbol.signature ? ` — ${symbol.signature}` : ""} *(${file})*`;
+}
+
+export function formatHierarchicalExplanationMarkdown(
+  hierarchical: HierarchicalExplanationResult,
+  symbolName: string,
+  code?: string,
+  startLine?: number,
+  callGraph?: CallGraphContext
+): string {
+  const sections: string[] = [];
+
+  sections.push(formatExplanationMarkdown(hierarchical.parent, code, startLine, callGraph));
+
+  if (hierarchical.children.length > 0) {
+    sections.push("---");
+    sections.push("## Called Functions");
+    sections.push(formatChildSummaryList(hierarchical.children));
+
+    for (const child of hierarchical.children) {
+      sections.push(formatChildSection(child));
+    }
+  }
+
+  return sections.join("\n\n");
+}
+
+function formatChildSummaryList(children: ChildExplanation[]): string {
+  return children.map((child) => {
+    const badge = childSourceBadge(child.source);
+    const file = path.basename(child.filePath);
+    return `- \`${child.symbolName}\` *(${file})* — ${badge}`;
+  }).join("\n");
+}
+
+function formatChildSection(child: ChildExplanation): string {
+  const badge = childSourceBadge(child.source);
+  const file = path.basename(child.filePath);
+
+  if (child.source === "external") {
+    return [
+      `### ${child.symbolName} ${badge}`,
+      `*External / library function — ${file}*`,
+      child.signature ? `\`${child.signature}\`` : ""
+    ].filter(Boolean).join("\n\n");
+  }
+
+  if (child.source === "skipped" || !child.result) {
+    const reason = child.error ?? "Could not resolve function definition";
+    return [
+      `### ${child.symbolName} ${badge}`,
+      `*Skipped: ${reason}*`
+    ].join("\n\n");
+  }
+
+  const result = child.result;
+  const lines: string[] = [];
+  lines.push(`### ${child.symbolName} ${badge}`);
+
+  if (result.purpose) {
+    lines.push(`**Purpose:** ${result.purpose}`);
+  }
+
+  if (result.stepByStep.length > 0) {
+    const steps = result.stepByStep.slice(0, 4);
+    lines.push("**Key Steps:**");
+    lines.push(steps.map((s, i) => `${i + 1}. ${formatStepWithLineNumber(s)}`).join("\n"));
+    if (result.stepByStep.length > 4) {
+      lines.push(`*...and ${result.stepByStep.length - 4} more step(s)*`);
+    }
+  }
+
+  if (result.inputs.length > 0) {
+    lines.push(`**Inputs:** ${result.inputs.join(", ")}`);
+  }
+
+  if (result.outputs.length > 0) {
+    lines.push(`**Outputs:** ${result.outputs.join(", ")}`);
+  }
+
+  return lines.join("\n\n");
+}
+
+function childSourceBadge(source: ChildExplanation["source"]): string {
+  switch (source) {
+    case "cache":
+      return "(Cached)";
+    case "generated":
+      return "(Generated)";
+    case "skipped":
+      return "(Skipped)";
+    case "external":
+      return "(External)";
+  }
+}
+
+export function formatChildExplanationsMarkdown(children: ChildExplanation[]): string {
+  if (children.length === 0) {
+    return "";
+  }
+
+  const sections: string[] = [];
+  sections.push("---");
+  sections.push("## Called Functions");
+  sections.push(formatChildSummaryList(children));
+
+  for (const child of children) {
+    sections.push(formatChildSection(child));
+  }
+
+  return sections.join("\n\n");
 }

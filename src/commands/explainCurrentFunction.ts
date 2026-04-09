@@ -1,6 +1,5 @@
 import * as vscode from "vscode";
 import { buildFallbackExplanation } from "../core/fallbackExplanation";
-import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
 import { resolveCurrentSymbolContext } from "../intelligence/symbolResolver";
 import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
@@ -8,10 +7,11 @@ import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { SelectedModel } from "../core/types";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
-import { formatExplanationMarkdown, CallGraphContext } from "../ui/formatter";
+import { formatExplanationMarkdown, formatHierarchicalExplanationMarkdown, CallGraphContext } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
 import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
+import { explainFunctionHierarchical } from "../core/hierarchicalExplain";
 
 export function createExplainCurrentFunctionCommand(
   orchestrator: ExplanationOrchestrator,
@@ -33,7 +33,6 @@ export function createExplainCurrentFunctionCommand(
       return;
     }
 
-    const input = buildExplainFunctionInput(context);
     const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
       placeHolder: `Choose a model to explain ${context.symbolName}`
@@ -64,8 +63,14 @@ export function createExplainCurrentFunctionCommand(
 
     const activeRequest = activeRequestManager.start(selection.modelName);
     void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", true);
+
+    const hasCallees = context.callees.length > 0;
+    const loadingTitle = hasCallees
+      ? `KYC: Explaining ${context.symbolName} + ${context.callees.length} child call(s)`
+      : `KYC: Explaining ${context.symbolName}`;
+
     panel.showLoading(
-      `KYC: Explaining ${context.symbolName}`,
+      loadingTitle,
       selection.providerLabel,
       selection.modelName,
       { requestId: activeRequest.requestId, stoppable: true }
@@ -74,23 +79,36 @@ export function createExplainCurrentFunctionCommand(
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: `KYC: Explaining ${context.symbolName}...`,
+        title: loadingTitle + "...",
         cancellable: false
       },
       async () => {
         try {
-          const { result, meta } = await orchestrator.explainFunction(input, selection, {
-            forceRefresh: options?.forceRefresh,
-            signal: activeRequest.controller.signal
-          });
-          void orchestrator.prefetchConnectedContexts(context, selection);
+          const { hierarchical, meta } = await explainFunctionHierarchical(
+            orchestrator,
+            context,
+            selection,
+            {
+              forceRefresh: options?.forceRefresh,
+              signal: activeRequest.controller.signal
+            }
+          );
+
           const callGraph: CallGraphContext = {
             symbolName: context.symbolName,
             callers: context.callers,
             callees: context.callees
           };
-          const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine, callGraph);
-          const tutorials = await getTutorialRecommendations(context.code, context.language);
+
+          const markdown = formatHierarchicalExplanationMarkdown(
+            hierarchical,
+            context.symbolName,
+            context.code,
+            context.range.startLine,
+            callGraph
+          );
+
+          const tutorialResult = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [
@@ -100,13 +118,21 @@ export function createExplainCurrentFunctionCommand(
               ...context.nearbySymbols.map((item) => item.name)
             ]
           });
+
+          const cachedCount = hierarchical.children.filter((c) => c.source === "cache").length;
+          const generatedCount = hierarchical.children.filter((c) => c.source === "generated").length;
+          const childSuffix = hierarchical.children.length > 0
+            ? ` — ${cachedCount} cached, ${generatedCount} generated`
+            : "";
+
           const titleSuffix = meta.cacheHit
             ? " (cached)"
             : meta.incremental
               ? ` (incremental: ${meta.changedLines} lines)`
               : "";
+
           panel.show(
-            `KYC: ${context.symbolName}${titleSuffix}`,
+            `KYC: ${context.symbolName}${titleSuffix}${childSuffix}`,
             markdown,
             {
               provider: meta.providerLabel,
@@ -114,7 +140,8 @@ export function createExplainCurrentFunctionCommand(
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
               references,
-              tutorials,
+              tutorials: tutorialResult.tutorials,
+              tutorialsCached: tutorialResult.fromCache,
               incremental: meta.incremental,
               changedLines: meta.changedLines,
               tokenUsage: meta.tokenUsage

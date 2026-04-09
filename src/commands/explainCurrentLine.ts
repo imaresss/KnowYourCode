@@ -98,7 +98,7 @@ export function createExplainCurrentLineCommand(
             signal: activeRequest.controller.signal
           });
           const markdown = formatLineExplanationMarkdown(result, lineText, lineNumber, enclosingName);
-          const tutorials = await getTutorialRecommendations(enclosingCode, input.language);
+          const tutorialResult = await getTutorialRecommendations(enclosingCode, input.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,
             seedIdentifiers: [enclosingName]
@@ -112,7 +112,8 @@ export function createExplainCurrentLineCommand(
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
               references,
-              tutorials,
+              tutorials: tutorialResult.tutorials,
+              tutorialsCached: tutorialResult.fromCache,
               tokenUsage: meta.tokenUsage
             }
           );

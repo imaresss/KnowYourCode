@@ -7,12 +7,14 @@ import { formatProviderError } from "../core/providerErrors";
 import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { SelectedModel } from "../core/types";
-import { normalizeExplanationResult, parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
-import { formatExplanationMarkdown } from "../ui/formatter";
+import { normalizeExplanationResult } from "../providers/normalizeExplanation";
+import { formatExplanationMarkdown, formatChildExplanationsMarkdown } from "../ui/formatter";
 import { sanitizeForDisplay } from "../core/responseParser";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
 import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
+import { explainChildFunctions } from "../core/hierarchicalExplain";
+import { tryReuseFunctionCache } from "../core/cacheReuse";
 
 export function createRunContextActionCommand(
   orchestrator: ExplanationOrchestrator,
@@ -87,6 +89,40 @@ export function createRunContextActionCommand(
       },
       async () => {
         try {
+          if (actionId === "explainSelectedCode" && !forceRefresh && context.enclosingFunction) {
+            const editor = vscode.window.activeTextEditor;
+            if (editor) {
+              const reused = tryReuseFunctionCache(
+                orchestrator,
+                context.enclosingFunction,
+                {
+                  startLine: editor.selection.start.line + 1,
+                  endLine: editor.selection.end.line + 1
+                },
+                context.code
+              );
+              if (reused) {
+                const reusedTutorials = await getTutorialRecommendations(context.code, context.language, {
+                  enclosingFunctionCode: context.enclosingFunction?.code
+                });
+                panel.show(
+                  `KYC: ${actionLabel(actionId)} (from ${reused.functionName} cache)`,
+                  reused.markdown,
+                  {
+                    provider: reused.meta.providerLabel,
+                    modelName: reused.meta.modelName,
+                    cacheHit: true,
+                    cacheLabel: reused.meta.cacheLabel,
+                    references: await resolveReferencesForCurrentEditor(reused.markdown, context),
+                    tutorials: reusedTutorials.tutorials,
+                    tutorialsCached: reusedTutorials.fromCache
+                  }
+                );
+                return;
+              }
+            }
+          }
+
           const { result, meta } = await orchestrator.runContextAction({
             actionId,
             key: context.key,
@@ -95,8 +131,29 @@ export function createRunContextActionCommand(
             prompt,
             selection
           }, { forceRefresh, signal: activeRequest.controller.signal });
-          const renderedMarkdown = renderPossiblyJsonExplanation(result.markdown);
 
+          let renderedMarkdown = renderPossiblyJsonExplanation(result.markdown);
+
+          const callees = context.symbolContext?.callees ?? context.enclosingFunction?.callees ?? [];
+          if (callees.length > 0 && actionId === "explainSelectedCode") {
+            const parentName = context.symbolContext?.symbolName
+              ?? context.enclosingFunction?.symbolName
+              ?? context.displayName;
+            const children = await explainChildFunctions(
+              orchestrator,
+              callees,
+              parentName,
+              selection,
+              activeRequest.controller.signal
+            );
+            if (children.length > 0) {
+              renderedMarkdown += "\n\n" + formatChildExplanationsMarkdown(children);
+            }
+          }
+
+          const actionTutorials = await getTutorialRecommendations(context.code, context.language, {
+            enclosingFunctionCode: context.enclosingFunction?.code
+          });
           panel.show(
             `KYC: ${actionLabel(actionId)}`,
             renderedMarkdown,
@@ -109,7 +166,8 @@ export function createRunContextActionCommand(
                 renderedMarkdown,
                 context
               ),
-              tutorials: await getTutorialRecommendations(context.code, context.language),
+              tutorials: actionTutorials.tutorials,
+              tutorialsCached: actionTutorials.fromCache,
               tokenUsage: meta.tokenUsage
             }
           );
