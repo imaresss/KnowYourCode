@@ -147,18 +147,22 @@ export interface ExplanationResponse<T> {
 
 export interface ExplainFunctionOptions {
   forceRefresh?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface ExplainLineOptions {
   forceRefresh?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface ExplainCallFlowOptions {
   forceRefresh?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface RunContextActionOptions {
   forceRefresh?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface ConnectedCallsSnapshot {
@@ -205,6 +209,10 @@ export interface StreamCallbacks {
   onChunk: (text: string) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+}
+
+export interface ProviderRequestOptions {
+  signal?: AbortSignal;
 }
 
 export interface ChangedRegion {

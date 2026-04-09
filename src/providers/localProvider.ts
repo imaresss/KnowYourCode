@@ -1,7 +1,8 @@
-import { ExplainFunctionInput, ExplainFunctionResult, TokenUsage } from "../core/types";
+import { ExplainFunctionInput, ExplainFunctionResult, ProviderRequestOptions, TokenUsage } from "../core/types";
 import { ModelProvider } from "./modelProvider";
 import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
+import { isAbortSignalError } from "./abort";
 
 export class LocalProvider implements ModelProvider {
   public readonly name = "local";
@@ -12,12 +13,13 @@ export class LocalProvider implements ModelProvider {
     private readonly modelName: string
   ) {}
 
-  public async explainFunction(input: ExplainFunctionInput): Promise<ExplainFunctionResult> {
+  public async explainFunction(input: ExplainFunctionInput, options?: ProviderRequestOptions): Promise<ExplainFunctionResult> {
     const prompt = buildExplainFunctionPrompt(input);
     let response: Response;
     try {
       response = await fetch(this.endpoint, {
         method: "POST",
+        signal: options?.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: this.modelName,
@@ -26,7 +28,10 @@ export class LocalProvider implements ModelProvider {
           format: "json"
         })
       });
-    } catch {
+    } catch (error) {
+      if (isAbortSignalError(error)) {
+        throw error;
+      }
       throw new Error(
         `fetch failed: unable to reach local provider at ${this.endpoint} for model ${this.modelName}`
       );
@@ -58,12 +63,21 @@ export class LocalProvider implements ModelProvider {
 
     if (typeof raw === "string") {
       try {
-        return normalizeExplanationResult(JSON.parse(raw));
+        return normalizeExplanationResult(JSON.parse(raw), {
+          modelName: this.modelName,
+          context: "local.explainFunction"
+        });
       } catch {
-        return normalizeExplanationResult(raw);
+        return normalizeExplanationResult(raw, {
+          modelName: this.modelName,
+          context: "local.explainFunction"
+        });
       }
     }
 
-    return normalizeExplanationResult(raw);
+    return normalizeExplanationResult(raw, {
+      modelName: this.modelName,
+      context: "local.explainFunction"
+    });
   }
 }

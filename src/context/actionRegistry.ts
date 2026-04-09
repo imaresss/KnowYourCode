@@ -19,9 +19,6 @@ export function getAvailableActions(context: KycInteractionContext): ContextActi
   if (context.mode === "selection") {
     const genericSelectionActions: ContextActionDefinition[] = [
       createGenericAction("explainSelectedCode", "Explain Selected Code", "Explain exactly the selected code."),
-      createGenericAction("explainLineByLine", "Explain Line-by-Line", "Explain each selected line in order."),
-      createGenericAction("summarizeSelection", "Summarize Selection", "Summarize the selected code block."),
-      createGenericAction("findIssues", "Find Issues / Improvements", "Review the selection for bugs and improvements.")
     ];
 
     if (context.selectionKind === "fullFunction") {
@@ -58,20 +55,7 @@ export function getAvailableActions(context: KycInteractionContext): ContextActi
       title: "Explain Function",
       command: "knowYourCode.explainFunction",
       description: "Explain the current function."
-    },
-    {
-      id: "explainCallFlow",
-      title: "Explain Call Flow",
-      command: "knowYourCode.explainCallFlow",
-      description: "Trace the function call flow."
-    },
-    {
-      id: "findDependencies",
-      title: "Find Dependencies",
-      command: "knowYourCode.showConnectedCalls",
-      description: "Show callers, callees, and dependencies."
-    },
-    createGenericAction("optimizeFunction", "Optimize Function", "Suggest optimizations for the current function.")
+    }
   ];
 }
 

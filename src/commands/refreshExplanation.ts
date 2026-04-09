@@ -10,11 +10,13 @@ import { ExplanationPanel } from "../ui/panel";
 import { formatExplanationMarkdown, CallGraphContext } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
+import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
 
 export function createRefreshExplanationCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
   panel: ExplanationPanel,
+  activeRequestManager: ActiveRequestManager,
   getLastActionRunner: () => LastActionRunner | undefined
 ): () => Promise<void> {
   return async () => {
@@ -45,6 +47,15 @@ export function createRefreshExplanationCommand(
       return;
     }
 
+    const activeRequest = activeRequestManager.start(selection.modelName);
+    void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", true);
+    panel.showLoading(
+      `KYC: Re-generating ${context.symbolName}`,
+      selection.providerLabel,
+      selection.modelName,
+      { requestId: activeRequest.requestId, stoppable: true }
+    );
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -53,7 +64,10 @@ export function createRefreshExplanationCommand(
       },
       async () => {
         try {
-          const { result, meta } = await orchestrator.explainFunction(input, selection, { forceRefresh: true });
+          const { result, meta } = await orchestrator.explainFunction(input, selection, {
+            forceRefresh: true,
+            signal: activeRequest.controller.signal
+          });
           void orchestrator.prefetchConnectedContexts(context, selection);
           const callGraph: CallGraphContext = {
             symbolName: context.symbolName,
@@ -84,6 +98,10 @@ export function createRefreshExplanationCommand(
             }
           );
         } catch (error) {
+          if (activeRequest.controller.signal.aborted || isAbortError(error)) {
+            panel.showStopped(`KYC: ${context.symbolName} (refreshed)`, selection.providerLabel, selection.modelName);
+            return;
+          }
           const friendly = formatProviderError(error, selection.provider);
           const fallback = buildFallbackExplanation(context, friendly);
           panel.show(
@@ -92,6 +110,9 @@ export function createRefreshExplanationCommand(
             { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
           );
           void vscode.window.showWarningMessage(friendly);
+        } finally {
+          activeRequestManager.complete(activeRequest.requestId);
+          void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", activeRequestManager.hasActive());
         }
       }
     );

@@ -10,11 +10,13 @@ import { ExplainLineInput, SelectedModel } from "../core/types";
 import { sha256 } from "../utils/hash";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
+import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
 
 export function createExplainCurrentLineCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
   panel: ExplanationPanel,
+  activeRequestManager: ActiveRequestManager,
   setLastActionRunner: (runner: LastActionRunner | undefined) => void
 ) {
   return async (options?: { forceRefresh?: boolean; selectionOverride?: SelectedModel }) => {
@@ -74,6 +76,15 @@ export function createExplainCurrentLineCommand(
       }
     });
 
+    const activeRequest = activeRequestManager.start(selection.modelName);
+    void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", true);
+    panel.showLoading(
+      `KYC: Explaining line ${lineNumber}`,
+      selection.providerLabel,
+      selection.modelName,
+      { requestId: activeRequest.requestId, stoppable: true }
+    );
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -83,7 +94,8 @@ export function createExplainCurrentLineCommand(
       async () => {
         try {
           const { result, meta } = await orchestrator.explainLine(input, selection, {
-            forceRefresh: options?.forceRefresh
+            forceRefresh: options?.forceRefresh,
+            signal: activeRequest.controller.signal
           });
           const markdown = formatLineExplanationMarkdown(result, lineText, lineNumber, enclosingName);
           const tutorials = await getTutorialRecommendations(enclosingCode, input.language);
@@ -105,6 +117,10 @@ export function createExplainCurrentLineCommand(
             }
           );
         } catch (error) {
+          if (activeRequest.controller.signal.aborted || isAbortError(error)) {
+            panel.showStopped(`KYC: Line ${lineNumber}`, selection.providerLabel, selection.modelName);
+            return;
+          }
           const friendly = formatProviderError(error, selection.provider);
           panel.show(
             `KYC: Line ${lineNumber} (error)`,
@@ -112,6 +128,9 @@ export function createExplainCurrentLineCommand(
             { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
           );
           void vscode.window.showWarningMessage(friendly);
+        } finally {
+          activeRequestManager.complete(activeRequest.requestId);
+          void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", activeRequestManager.hasActive());
         }
       }
     );

@@ -1,7 +1,8 @@
-import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks, TokenUsage } from "../core/types";
+import { ExplainFunctionInput, ExplainFunctionResult, ProviderRequestOptions, StreamCallbacks, TokenUsage } from "../core/types";
 import { ModelProvider } from "./modelProvider";
 import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
+import { isAbortSignalError } from "./abort";
 
 interface AnthropicMessageResponse {
   content?: Array<{ type?: string; text?: string }>;
@@ -19,19 +20,20 @@ export class ClaudeProvider implements ModelProvider {
     private readonly modelName: string
   ) {}
 
-  public async explainFunction(input: ExplainFunctionInput): Promise<ExplainFunctionResult> {
+  public async explainFunction(input: ExplainFunctionInput, options?: ProviderRequestOptions): Promise<ExplainFunctionResult> {
     const prompt = buildExplainFunctionPrompt(input);
-    const text = await this.callApi(prompt);
+    const text = await this.callApi(prompt, options);
     return this.parseResponse(text);
   }
 
-  public async streamRaw(prompt: string, callbacks: StreamCallbacks): Promise<string> {
+  public async streamRaw(prompt: string, callbacks: StreamCallbacks, options?: ProviderRequestOptions): Promise<string> {
     this.validateConfig();
 
     let response: Response;
     try {
       response = await fetch(this.endpoint, {
         method: "POST",
+        signal: options?.signal,
         headers: {
           "Content-Type": "application/json",
           "x-api-key": this.apiKey,
@@ -44,7 +46,10 @@ export class ClaudeProvider implements ModelProvider {
           messages: [{ role: "user", content: prompt }]
         })
       });
-    } catch {
+    } catch (error) {
+      if (isAbortSignalError(error)) {
+        throw error;
+      }
       const err = new Error(`Unable to reach Claude API at ${this.endpoint}`);
       callbacks.onError(err);
       throw err;
@@ -111,13 +116,14 @@ export class ClaudeProvider implements ModelProvider {
     return accumulated;
   }
 
-  private async callApi(prompt: string): Promise<string> {
+  private async callApi(prompt: string, options?: ProviderRequestOptions): Promise<string> {
     this.validateConfig();
 
     let response: Response;
     try {
       response = await fetch(this.endpoint, {
         method: "POST",
+        signal: options?.signal,
         headers: {
           "Content-Type": "application/json",
           "x-api-key": this.apiKey,
@@ -129,7 +135,10 @@ export class ClaudeProvider implements ModelProvider {
           messages: [{ role: "user", content: prompt }]
         })
       });
-    } catch {
+    } catch (error) {
+      if (isAbortSignalError(error)) {
+        throw error;
+      }
       throw new Error(`fetch failed: unable to reach Claude API at ${this.endpoint}`);
     }
 
@@ -165,7 +174,10 @@ export class ClaudeProvider implements ModelProvider {
   }
 
   private parseResponse(text: string): ExplainFunctionResult {
-    return normalizeExplanationResult(text);
+    return normalizeExplanationResult(text, {
+      modelName: this.modelName,
+      context: "claude.explainFunction"
+    });
   }
 
   private validateConfig(): void {

@@ -14,6 +14,11 @@ export interface PanelShowOptions {
   tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
 }
 
+interface LoadingStateOptions {
+  requestId?: string;
+  stoppable?: boolean;
+}
+
 type MessageHandler = (message: { type: string; payload?: unknown }) => void;
 
 export class ExplanationPanel {
@@ -31,10 +36,17 @@ export class ExplanationPanel {
     this.panel!.reveal(vscode.ViewColumn.Beside, true);
   }
 
-  public showLoading(title: string, provider: string, modelName?: string): void {
+  public showLoading(title: string, provider: string, modelName?: string, options: LoadingStateOptions = {}): void {
     this.ensurePanel(title);
     this.panel!.title = title;
-    this.panel!.webview.html = buildLoadingHtml(title, provider, modelName);
+    this.panel!.webview.html = buildLoadingHtml(title, provider, modelName, options);
+    this.panel!.reveal(vscode.ViewColumn.Beside, true);
+  }
+
+  public showStopped(title: string, provider: string, modelName?: string): void {
+    this.ensurePanel(title);
+    this.panel!.title = title;
+    this.panel!.webview.html = buildStoppedHtml(title, provider, modelName);
     this.panel!.reveal(vscode.ViewColumn.Beside, true);
   }
 
@@ -236,8 +248,17 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
 </html>`;
 }
 
-function buildLoadingHtml(title: string, provider: string, modelName?: string): string {
+function buildLoadingHtml(
+  title: string,
+  provider: string,
+  modelName?: string,
+  options: LoadingStateOptions = {}
+): string {
   const modelBadge = modelName ? `<span class="model-badge">${escapeHtml(modelName)}</span>` : "";
+  const requestId = options.requestId ? escapeHtml(options.requestId) : "";
+  const stopButton = options.stoppable
+    ? `<button class="btn btn-stop" id="stopBtn" title="Stop ongoing generation">⛔ Stop Generating</button>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -256,7 +277,61 @@ function buildLoadingHtml(title: string, provider: string, modelName?: string): 
   <div class="loading-container">
     <div class="spinner"></div>
     <p class="loading-text">${escapeHtml(title)}</p>
-    <p class="loading-subtext">Analyzing code and generating explanation...</p>
+    <p class="loading-subtext" id="loadingStatus">Analyzing code and generating explanation...</p>
+    ${stopButton}
+  </div>
+  <script>
+    const vscode = acquireVsCodeApi();
+    const stopBtn = document.getElementById('stopBtn');
+    const loadingStatus = document.getElementById('loadingStatus');
+    let stopRequested = false;
+
+    const requestStop = () => {
+      if (stopRequested || !stopBtn) {
+        return;
+      }
+      stopRequested = true;
+      stopBtn.setAttribute('disabled', 'true');
+      if (loadingStatus) {
+        loadingStatus.textContent = 'Stopping generation...';
+      }
+      vscode.postMessage({ type: 'stopGeneration', payload: { requestId: '${requestId}' } });
+    };
+
+    if (stopBtn) {
+      stopBtn.addEventListener('click', requestStop);
+    }
+    window.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        requestStop();
+      }
+    });
+  </script>
+</body>
+</html>`;
+}
+
+function buildStoppedHtml(title: string, provider: string, modelName?: string): string {
+  const modelBadge = modelName ? `<span class="model-badge">${escapeHtml(modelName)}</span>` : "";
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>${CSS}</style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <span class="provider-badge">${escapeHtml(provider)}</span>
+      ${modelBadge}
+      <span class="cache-badge cache-miss">stopped</span>
+    </div>
+  </div>
+  <div class="loading-container">
+    <p class="stopped-icon">⛔</p>
+    <p class="loading-text">${escapeHtml(title)}</p>
+    <p class="loading-subtext">Generation stopped by user</p>
   </div>
 </body>
 </html>`;
@@ -389,6 +464,22 @@ const CSS = `
 
   .btn-primary:hover { background: var(--primary-hover); }
 
+  .btn-stop {
+    margin-top: 12px;
+    background: #7f1d1d;
+    color: #fff;
+    border: 1px solid #dc2626;
+  }
+
+  .btn-stop:hover {
+    background: #991b1b;
+  }
+
+  .btn[disabled] {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
   .btn-icon { font-size: 12px; }
 
   .content {
@@ -503,6 +594,11 @@ const CSS = `
     margin-top: 8px;
     opacity: 0.6;
     font-size: 0.9em;
+  }
+
+  .stopped-icon {
+    font-size: 32px;
+    line-height: 1;
   }
 
   .tutorials {

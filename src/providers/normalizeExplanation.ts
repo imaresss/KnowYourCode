@@ -1,8 +1,14 @@
 import { ExplainFunctionResult } from "../core/types";
+import { createFallbackResponse, parseKYCResponse, sanitizeForDisplay, tryParseKycJsonObject } from "../core/responseParser";
 
-export function normalizeExplanationResult(payload: unknown): ExplainFunctionResult {
+interface NormalizeOptions {
+  modelName?: string;
+  context?: string;
+}
+
+export function normalizeExplanationResult(payload: unknown, options: NormalizeOptions = {}): ExplainFunctionResult {
   if (typeof payload === "string") {
-    return normalizeFromModelText(payload);
+    return normalizeFromModelText(payload, options);
   }
 
   if (isExplainFunctionShape(payload)) {
@@ -18,98 +24,38 @@ export function normalizeExplanationResult(payload: unknown): ExplainFunctionRes
 }
 
 /** Parses raw model output: markdown fences, prose + JSON, object arrays, etc. */
-export function normalizeFromModelText(raw: string): ExplainFunctionResult {
+export function normalizeFromModelText(raw: string, options: NormalizeOptions = {}): ExplainFunctionResult {
   const trimmed = raw.trim();
   if (!trimmed) {
     return fallbackFromText("");
   }
 
-  const direct = tryParseJsonFromString(trimmed);
-  if (direct && isExplainFunctionShape(direct)) {
-    return normalizeObjectPayload(direct);
+  const parsed = parseKYCResponse<Record<string, unknown>>(trimmed, {
+    modelName: options.modelName,
+    context: options.context ?? "explainFunction",
+    expectedShape: isRecord,
+    fallbackFactory: (text) => createFallbackResponse(text) as unknown as Record<string, unknown>
+  });
+
+  if (isExplainFunctionShape(parsed.parsed)) {
+    return normalizeObjectPayload(parsed.parsed);
   }
 
-  const extracted = extractBalancedJsonObject(trimmed);
-  if (extracted) {
-    try {
-      const parsed = JSON.parse(extracted) as unknown;
-      if (isExplainFunctionShape(parsed)) {
-        return normalizeObjectPayload(parsed);
-      }
-    } catch {
-      // continue to looser strategies
-    }
+  if (parsed.usedFallback) {
+    return buildCleanFallback(trimmed);
   }
 
-  const afterFences = stripMarkdownFences(trimmed);
-  if (afterFences !== trimmed) {
-    const again = tryParseJsonFromString(afterFences);
-    if (again && isExplainFunctionShape(again)) {
-      return normalizeObjectPayload(again);
-    }
-    const ext2 = extractBalancedJsonObject(afterFences);
-    if (ext2) {
-      try {
-        const parsed = JSON.parse(ext2) as unknown;
-        if (isExplainFunctionShape(parsed)) {
-          return normalizeObjectPayload(parsed);
-        }
-      } catch {
-        /* noop */
-      }
-    }
-  }
-
-  return fallbackFromText(trimmed);
+  const fallbackContent = String((parsed.parsed as Record<string, unknown>).content ?? trimmed);
+  return fallbackFromText(fallbackContent);
 }
 
 export function parseJsonObjectFromModelText<T extends object>(raw: string): T | undefined {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    return undefined;
+  const parsed = tryParseKycJsonObject<Record<string, unknown>>(raw, {
+    context: "generic-json-object"
+  });
+  if (isRecord(parsed)) {
+    return parsed as T;
   }
-
-  const direct = tryParseJsonFromString(trimmed);
-  if (isRecord(direct)) {
-    return direct as T;
-  }
-
-  const extracted = extractBalancedJsonObject(trimmed);
-  if (extracted) {
-    try {
-      const parsed = JSON.parse(extracted) as unknown;
-      if (isRecord(parsed)) {
-        return parsed as T;
-      }
-    } catch {
-      // continue to fenced fallback
-    }
-  }
-
-  const afterFences = stripMarkdownFences(trimmed);
-  if (afterFences !== trimmed) {
-    const fenced = tryParseJsonFromString(afterFences);
-    if (isRecord(fenced)) {
-      return fenced as T;
-    }
-    const extractedAfterFences = extractBalancedJsonObject(afterFences);
-    if (extractedAfterFences) {
-      try {
-        const parsed = JSON.parse(extractedAfterFences) as unknown;
-        if (isRecord(parsed)) {
-          return parsed as T;
-        }
-      } catch {
-        // ignore malformed fallback JSON
-      }
-    }
-  }
-
-  const loose = parseLooseObjectFallback(afterFences);
-  if (isRecord(loose)) {
-    return loose as T;
-  }
-
   return undefined;
 }
 
@@ -502,7 +448,7 @@ function normalizeConfidence(value: unknown): number {
 }
 
 function fallbackFromText(text: string): ExplainFunctionResult {
-  const cleaned = text.trim();
+  const cleaned = sanitizeForDisplay(text);
   const firstLine = cleaned.split(/\r?\n/, 1)[0] ?? "";
   return {
     summary: firstLine || "Function explanation",
@@ -515,4 +461,71 @@ function fallbackFromText(text: string): ExplainFunctionResult {
     connectedFlow: [],
     confidence: 0.35
   };
+}
+
+/**
+ * Build a structured result from deeply-broken JSON by extracting
+ * whatever readable key-value pairs we can, then filling known fields.
+ */
+function buildCleanFallback(raw: string): ExplainFunctionResult {
+  const loose = extractLooseKVFromGarbled(raw);
+  const purpose = loose["purpose"] ?? loose["summary"] ?? loose["description"] ?? loose["why_it_exists"] ?? "";
+  const steps = extractListField(loose, ["key", "steps", "stepByStep", "filtering_logic", "state_management"]);
+  const deps = extractListField(loose, ["dependencies"]);
+  const risks = extractListField(loose, ["risks"]);
+
+  if (!purpose && steps.length === 0) {
+    return fallbackFromText(raw);
+  }
+
+  return {
+    summary: String(loose["summary"] ?? purpose).slice(0, 120) || "Function explanation",
+    purpose: String(purpose) || sanitizeForDisplay(raw),
+    stepByStep: steps,
+    inputs: extractListField(loose, ["inputs"]),
+    outputs: extractListField(loose, ["outputs"]),
+    dependencies: deps,
+    risks: risks,
+    connectedFlow: [],
+    confidence: 0.3
+  };
+}
+
+function extractLooseKVFromGarbled(raw: string): Record<string, string> {
+  let text = raw
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#34;/g, "\"")
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/[\u201C\u201D]/g, "\"")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/\r?\n/g, " ")
+    .replace(/\s+/g, " ");
+
+  const out: Record<string, string> = {};
+  const pattern = /"?([A-Za-z_$][\w$-]*)"?\s*:\s*"?([^"{}[\],]+)"?/g;
+  let m = pattern.exec(text);
+  while (m) {
+    const key = m[1].trim();
+    const val = m[2].trim();
+    if (val.length > 5 && !out[key]) {
+      out[key] = val;
+    }
+    m = pattern.exec(text);
+  }
+  return out;
+}
+
+function extractListField(loose: Record<string, string>, keys: string[]): string[] {
+  const items: string[] = [];
+  for (const key of keys) {
+    const val = loose[key];
+    if (val && val.length > 5) {
+      items.push(val);
+    }
+  }
+  return items;
 }

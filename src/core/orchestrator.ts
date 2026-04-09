@@ -28,8 +28,8 @@ import { analyzeDiff, isIncrementalCandidate } from "../intelligence/diffAnalysi
 import { resolveConnectedSymbolContexts } from "../intelligence/symbolResolver";
 import { buildExplainCallFlowPrompt, buildExplainLinePrompt, buildIncrementalExplainPrompt } from "../providers/promptBuilder";
 import { createProviderForSelection, PROVIDER_DISPLAY_NAMES } from "../providers/providerFactory";
-import { parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
 import { logInfo } from "../utils/logger";
+import { parseKYCResponse } from "./responseParser";
 
 export class ExplanationOrchestrator {
   private config: ExtensionConfig;
@@ -88,8 +88,10 @@ export class ExplanationOrchestrator {
           if (isIncrementalCandidate(diff, incrementalConfig)) {
             logInfo(`Incremental explain for ${input.symbolName}: ${diff.changedLines} lines changed, ${diff.regionCount} region(s), depth ${(previous.incrementalDepth ?? 0) + 1}`);
             const prev = previous;
-            return this.withInFlightDedup(lookup, () =>
-              this.runIncrementalExplain(input, selection, prev, diff, lookup)
+            return this.withInFlightDedup(
+              lookup,
+              () => this.runIncrementalExplain(input, selection, prev, diff, lookup, options.signal),
+              options.signal
             );
           } else {
             logInfo(`Incremental skipped for ${input.symbolName}: diff too large (${diff.changedLines} lines, ${diff.regionCount} regions, ratio ${diff.changeRatio.toFixed(2)})`);
@@ -100,7 +102,7 @@ export class ExplanationOrchestrator {
 
     return this.withInFlightDedup(lookup, async () => {
       const provider = createProviderForSelection(selection);
-      const result = await provider.explainFunction(input);
+      const result = await provider.explainFunction(input, { signal: options.signal });
       this.repo.replaceCallEdges(symbolKey, input.callees);
 
       const record: StoredExplanation = {
@@ -116,7 +118,7 @@ export class ExplanationOrchestrator {
         result,
         meta: { ...this.buildPresentation(false, record), tokenUsage: provider.tokenUsage }
       };
-    });
+    }, options.signal);
   }
 
   private async runIncrementalExplain(
@@ -124,12 +126,13 @@ export class ExplanationOrchestrator {
     selection: SelectedModel,
     previous: StoredExplanation,
     diff: import("./types").DiffAnalysis,
-    lookup: ExplanationLookup
+    lookup: ExplanationLookup,
+    signal?: AbortSignal
   ): Promise<ExplanationResponse<ExplainFunctionResult>> {
     const previousResult = previous.result as ExplainFunctionResult;
     const prompt = buildIncrementalExplainPrompt(input, previousResult, diff);
-    const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt);
-    const result = parseIncrementalResult(raw, previousResult);
+    const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt, signal);
+    const result = parseIncrementalResult(raw, previousResult, selection.modelName);
     const newDepth = (previous.incrementalDepth ?? 0) + 1;
 
     this.repo.replaceCallEdges(lookup.symbolKey, input.callees);
@@ -184,8 +187,8 @@ export class ExplanationOrchestrator {
 
     return this.withInFlightDedup(lookup, async () => {
       const prompt = buildExplainLinePrompt(input);
-      const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt);
-      const result = parseLineResult(raw);
+      const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt, options.signal);
+      const result = parseLineResult(raw, selection.modelName);
 
       const record: StoredExplanation = {
         ...lookup,
@@ -198,7 +201,7 @@ export class ExplanationOrchestrator {
         result,
         meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
-    });
+    }, options.signal);
   }
 
   public async explainCallFlow(
@@ -229,8 +232,8 @@ export class ExplanationOrchestrator {
 
     return this.withInFlightDedup(lookup, async () => {
       const prompt = buildExplainCallFlowPrompt(input);
-      const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt);
-      const result = parseCallFlowResult(raw);
+      const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt, options.signal);
+      const result = parseCallFlowResult(raw, selection.modelName);
 
       const record: StoredExplanation = {
         ...lookup,
@@ -243,7 +246,7 @@ export class ExplanationOrchestrator {
         result,
         meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
-    });
+    }, options.signal);
   }
 
   public async runContextAction(input: {
@@ -274,7 +277,7 @@ export class ExplanationOrchestrator {
     }
 
     return this.withInFlightDedup(lookup, async () => {
-      const { text: raw, tokenUsage } = await this.callProviderRaw(input.selection, input.prompt);
+      const { text: raw, tokenUsage } = await this.callProviderRaw(input.selection, input.prompt, options.signal);
       const record: StoredExplanation = {
         ...lookup,
         explanationType: "contextAction",
@@ -288,17 +291,18 @@ export class ExplanationOrchestrator {
         result: record.result as GenericMarkdownResult,
         meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
-    });
+    }, options.signal);
   }
 
   public async streamExplain(
     selection: SelectedModel,
     prompt: string,
-    callbacks: StreamCallbacks
+    callbacks: StreamCallbacks,
+    signal?: AbortSignal
   ): Promise<string | undefined> {
     const provider = createProviderForSelection(selection);
     if (provider.streamRaw) {
-      return provider.streamRaw(prompt, callbacks);
+      return provider.streamRaw(prompt, callbacks, { signal });
     }
     return undefined;
   }
@@ -338,7 +342,11 @@ export class ExplanationOrchestrator {
     };
   }
 
-  private async callProviderRaw(selection: SelectedModel, prompt: string): Promise<{ text: string; tokenUsage?: TokenUsage }> {
+  private async callProviderRaw(
+    selection: SelectedModel,
+    prompt: string,
+    signal?: AbortSignal
+  ): Promise<{ text: string; tokenUsage?: TokenUsage }> {
     const provider = createProviderForSelection(selection);
     if (provider.streamRaw) {
       let accumulated = "";
@@ -346,7 +354,7 @@ export class ExplanationOrchestrator {
         onChunk: (chunk) => { accumulated += chunk; },
         onDone: () => {},
         onError: () => {}
-      });
+      }, { signal });
       return { text: accumulated, tokenUsage: provider.tokenUsage };
     }
 
@@ -357,7 +365,7 @@ export class ExplanationOrchestrator {
       contentHash: "", dependencyHash: "",
       range: { startLine: 0, endLine: 0 }
     };
-    const result = await provider.explainFunction(dummyInput);
+    const result = await provider.explainFunction(dummyInput, { signal });
     return { text: JSON.stringify(result), tokenUsage: provider.tokenUsage };
   }
 
@@ -378,7 +386,8 @@ export class ExplanationOrchestrator {
 
   private async withInFlightDedup<T>(
     lookup: ExplanationLookup,
-    loader: () => Promise<ExplanationResponse<T>>
+    loader: () => Promise<ExplanationResponse<T>>,
+    signal?: AbortSignal
   ): Promise<ExplanationResponse<T>> {
     const key = [
       lookup.symbolKey,
@@ -394,7 +403,7 @@ export class ExplanationOrchestrator {
       return existing;
     }
 
-    const request = this.runDebounced(loader);
+    const request = this.runDebounced(loader, signal);
     this.inFlightRequests.set(key, request);
     try {
       return await request;
@@ -403,20 +412,30 @@ export class ExplanationOrchestrator {
     }
   }
 
-  private async runDebounced<T>(loader: () => Promise<T>): Promise<T> {
+  private async runDebounced<T>(loader: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) {
+      throw new DOMException("Generation aborted", "AbortError");
+    }
     if (this.config.selectionDebounceMs > 0) {
       await new Promise<void>((resolve) => {
         setTimeout(resolve, this.config.selectionDebounceMs);
       });
     }
+    if (signal?.aborted) {
+      throw new DOMException("Generation aborted", "AbortError");
+    }
     return loader();
   }
 }
 
-function parseIncrementalResult(raw: string, fallback: ExplainFunctionResult): ExplainFunctionResult {
-  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-  const parsed = parseJsonObjectFromModelText<Record<string, unknown>>(cleaned);
-  if (!parsed) {
+function parseIncrementalResult(raw: string, fallback: ExplainFunctionResult, modelName?: string): ExplainFunctionResult {
+  const parsed = parseKYCResponse<Record<string, unknown>>(raw, {
+    modelName,
+    context: "incremental-explain-result",
+    expectedShape: (value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value)),
+    fallbackFactory: () => ({})
+  }).parsed;
+  if (!parsed || Object.keys(parsed).length === 0) {
     return fallback;
   }
 
@@ -433,18 +452,25 @@ function parseIncrementalResult(raw: string, fallback: ExplainFunctionResult): E
   };
 }
 
-function parseLineResult(raw: string): ExplainLineResult {
-  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-  const parsed = parseJsonObjectFromModelText<Record<string, unknown>>(cleaned);
-  if (parsed) {
+function parseLineResult(raw: string, modelName?: string): ExplainLineResult {
+  const parsedResult = parseKYCResponse<Record<string, unknown>>(raw, {
+    modelName,
+    context: "line-explain-result",
+    expectedShape: (value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value)),
+    fallbackFactory: () => ({})
+  });
+  if (!parsedResult.usedFallback) {
+    const parsed = parsedResult.parsed;
+    const fallbackText = String(parsed.content ?? raw).trim();
     return {
-      lineExplanation: String(parsed.lineExplanation ?? parsed.explanation ?? ""),
-      whyItMatters: String(parsed.whyItMatters ?? parsed.importance ?? ""),
-      technicalDetail: String(parsed.technicalDetail ?? parsed.technical ?? ""),
+      lineExplanation: String(parsed.lineExplanation ?? parsed.explanation ?? parsed.summary ?? ""),
+      whyItMatters: String(parsed.whyItMatters ?? parsed.importance ?? parsed.purpose ?? ""),
+      technicalDetail: String(parsed.technicalDetail ?? parsed.technical ?? parsed.content ?? fallbackText),
       relatedConcepts: Array.isArray(parsed.relatedConcepts) ? parsed.relatedConcepts.map(String) : []
     };
   }
 
+  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
   return {
     lineExplanation: cleaned.split("\n")[0] || "Unable to parse line explanation.",
     whyItMatters: "",
@@ -453,12 +479,17 @@ function parseLineResult(raw: string): ExplainLineResult {
   };
 }
 
-function parseCallFlowResult(raw: string): ExplainCallFlowResult {
-  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
-  const parsed = parseJsonObjectFromModelText<Record<string, unknown>>(cleaned);
-  if (parsed) {
+function parseCallFlowResult(raw: string, modelName?: string): ExplainCallFlowResult {
+  const parsedResult = parseKYCResponse<Record<string, unknown>>(raw, {
+    modelName,
+    context: "callflow-explain-result",
+    expectedShape: (value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value)),
+    fallbackFactory: () => ({})
+  });
+  if (!parsedResult.usedFallback) {
+    const parsed = parsedResult.parsed;
     return {
-      overview: String(parsed.overview ?? ""),
+      overview: String(parsed.overview ?? parsed.summary ?? ""),
       flowSteps: ensureStringArray(parsed.flowSteps),
       dataFlow: ensureStringArray(parsed.dataFlow),
       entryPoints: ensureStringArray(parsed.entryPoints),
@@ -468,6 +499,7 @@ function parseCallFlowResult(raw: string): ExplainCallFlowResult {
     };
   }
 
+  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
   return {
     overview: cleaned.split("\n")[0] || "Unable to parse call flow explanation.",
     flowSteps: [],

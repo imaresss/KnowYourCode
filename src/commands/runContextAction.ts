@@ -9,13 +9,16 @@ import { ModelSelectionService } from "../providers/modelSelector";
 import { SelectedModel } from "../core/types";
 import { normalizeExplanationResult, parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
 import { formatExplanationMarkdown } from "../ui/formatter";
+import { sanitizeForDisplay } from "../core/responseParser";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
+import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
 
 export function createRunContextActionCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
   panel: ExplanationPanel,
+  activeRequestManager: ActiveRequestManager,
   setLastActionRunner: (runner: LastActionRunner | undefined) => void
 ) {
   return async (
@@ -70,7 +73,12 @@ export function createRunContextActionCommand(
     selection: SelectedModel,
     forceRefresh: boolean
   ): Promise<void> {
-    panel.showLoading(`KYC: ${actionLabel(actionId)}`, selection.providerLabel, selection.modelName);
+    const activeRequest = activeRequestManager.start(selection.modelName);
+    void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", true);
+    panel.showLoading(`KYC: ${actionLabel(actionId)}`, selection.providerLabel, selection.modelName, {
+      requestId: activeRequest.requestId,
+      stoppable: true
+    });
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -86,7 +94,7 @@ export function createRunContextActionCommand(
             dependencyHash: context.dependencyHash,
             prompt,
             selection
-          }, { forceRefresh });
+          }, { forceRefresh, signal: activeRequest.controller.signal });
           const renderedMarkdown = renderPossiblyJsonExplanation(result.markdown);
 
           panel.show(
@@ -106,6 +114,10 @@ export function createRunContextActionCommand(
             }
           );
         } catch (error) {
+          if (activeRequest.controller.signal.aborted || isAbortError(error)) {
+            panel.showStopped(`KYC: ${actionLabel(actionId)}`, selection.providerLabel, selection.modelName);
+            return;
+          }
           const friendly = formatProviderError(error, selection.provider);
           panel.show(
             `KYC: ${actionLabel(actionId)} (error)`,
@@ -113,6 +125,9 @@ export function createRunContextActionCommand(
             { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
           );
           void vscode.window.showWarningMessage(friendly);
+        } finally {
+          activeRequestManager.complete(activeRequest.requestId);
+          void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", activeRequestManager.hasActive());
         }
       }
     );
@@ -147,14 +162,24 @@ function renderPossiblyJsonExplanation(markdownOrJson: string): string {
     return raw;
   }
 
-  // If the model returned an explain-function shaped JSON object, render it using the standard formatter.
-  const parsed = parseJsonObjectFromModelText<Record<string, unknown>>(raw);
-  if (parsed && (("summary" in parsed) || ("purpose" in parsed) || ("stepByStep" in parsed))) {
-    const normalized = normalizeExplanationResult(parsed);
+  const normalized = normalizeExplanationResult(raw);
+  if (normalized.confidence > 0.3 || normalized.stepByStep.length > 0) {
     return formatExplanationMarkdown(normalized);
   }
 
+  if (looksLikeGarbledJson(raw)) {
+    const cleaned = sanitizeForDisplay(raw);
+    if (cleaned && cleaned !== raw) {
+      return `# Explanation\n\n${cleaned}`;
+    }
+  }
+
   return raw;
+}
+
+function looksLikeGarbledJson(text: string): boolean {
+  return /&quot;|&amp;|&lt;/.test(text) ||
+    /[{}\[\]]/.test(text) && /"?\w+"?\s*:/.test(text);
 }
 
 function actionLabel(actionId: KycActionId): string {

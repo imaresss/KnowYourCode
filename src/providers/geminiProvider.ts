@@ -1,7 +1,8 @@
-import { ExplainFunctionInput, ExplainFunctionResult, StreamCallbacks, TokenUsage } from "../core/types";
+import { ExplainFunctionInput, ExplainFunctionResult, ProviderRequestOptions, StreamCallbacks, TokenUsage } from "../core/types";
 import { ModelProvider } from "./modelProvider";
 import { normalizeExplanationResult } from "./normalizeExplanation";
 import { buildExplainFunctionPrompt } from "./promptBuilder";
+import { isAbortSignalError } from "./abort";
 
 interface GeminiResponse {
   candidates?: Array<{
@@ -21,13 +22,13 @@ export class GeminiProvider implements ModelProvider {
     private readonly modelName: string
   ) {}
 
-  public async explainFunction(input: ExplainFunctionInput): Promise<ExplainFunctionResult> {
+  public async explainFunction(input: ExplainFunctionInput, options?: ProviderRequestOptions): Promise<ExplainFunctionResult> {
     const prompt = buildExplainFunctionPrompt(input);
-    const text = await this.callApi(prompt);
+    const text = await this.callApi(prompt, options);
     return this.parseResponse(text);
   }
 
-  public async streamRaw(prompt: string, callbacks: StreamCallbacks): Promise<string> {
+  public async streamRaw(prompt: string, callbacks: StreamCallbacks, options?: ProviderRequestOptions): Promise<string> {
     this.validateConfig();
     const url = `${this.endpoint}/${this.modelName}:streamGenerateContent?alt=sse&key=${this.apiKey}`;
 
@@ -35,13 +36,17 @@ export class GeminiProvider implements ModelProvider {
     try {
       response = await fetch(url, {
         method: "POST",
+        signal: options?.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { maxOutputTokens: 2048 }
         })
       });
-    } catch {
+    } catch (error) {
+      if (isAbortSignalError(error)) {
+        throw error;
+      }
       const err = new Error(`Unable to reach Gemini API at ${this.endpoint}`);
       callbacks.onError(err);
       throw err;
@@ -57,7 +62,7 @@ export class GeminiProvider implements ModelProvider {
     let accumulated = "";
     const reader = response.body?.getReader();
     if (!reader) {
-      const text = await this.extractNonStreamResponse(await this.callApiRaw(prompt));
+      const text = await this.extractNonStreamResponse(await this.callApiRaw(prompt, options));
       callbacks.onChunk(text);
       callbacks.onDone();
       return text;
@@ -100,12 +105,12 @@ export class GeminiProvider implements ModelProvider {
     return accumulated;
   }
 
-  private async callApi(prompt: string): Promise<string> {
-    const response = await this.callApiRaw(prompt);
+  private async callApi(prompt: string, options?: ProviderRequestOptions): Promise<string> {
+    const response = await this.callApiRaw(prompt, options);
     return this.extractNonStreamResponse(response);
   }
 
-  private async callApiRaw(prompt: string): Promise<Response> {
+  private async callApiRaw(prompt: string, options?: ProviderRequestOptions): Promise<Response> {
     this.validateConfig();
     const url = `${this.endpoint}/${this.modelName}:generateContent?key=${this.apiKey}`;
 
@@ -113,13 +118,17 @@ export class GeminiProvider implements ModelProvider {
     try {
       response = await fetch(url, {
         method: "POST",
+        signal: options?.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { maxOutputTokens: 2048 }
         })
       });
-    } catch {
+    } catch (error) {
+      if (isAbortSignalError(error)) {
+        throw error;
+      }
       throw new Error(`fetch failed: unable to reach Gemini API at ${this.endpoint}`);
     }
 
@@ -157,7 +166,10 @@ export class GeminiProvider implements ModelProvider {
   }
 
   private parseResponse(text: string): ExplainFunctionResult {
-    return normalizeExplanationResult(text);
+    return normalizeExplanationResult(text, {
+      modelName: this.modelName,
+      context: "gemini.explainFunction"
+    });
   }
 
   private validateConfig(): void {

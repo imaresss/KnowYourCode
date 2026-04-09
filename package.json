@@ -31,7 +31,8 @@
     "onCommand:knowYourCode.showConnectedCalls",
     "onCommand:knowYourCode.showContextActions",
     "onCommand:knowYourCode.switchProvider",
-    "onCommand:knowYourCode.setApiKey"
+    "onCommand:knowYourCode.setApiKey",
+    "onCommand:knowYourCode.stopGeneration"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -42,36 +43,6 @@
         "category": "Know Your Code"
       },
       {
-        "command": "knowYourCode.explainLine",
-        "title": "KYC: Explain Line",
-        "category": "Know Your Code"
-      },
-      {
-        "command": "knowYourCode.explainCallFlow",
-        "title": "KYC: Explain Call Flow",
-        "category": "Know Your Code"
-      },
-      {
-        "command": "knowYourCode.refreshExplanation",
-        "title": "KYC: Regenerate Explanation",
-        "category": "Know Your Code"
-      },
-      {
-        "command": "knowYourCode.runContextAction",
-        "title": "KYC: Run Context Action",
-        "category": "Know Your Code"
-      },
-      {
-        "command": "knowYourCode.showConnectedCalls",
-        "title": "KYC: Show Connected Calls",
-        "category": "Know Your Code"
-      },
-      {
-        "command": "knowYourCode.showContextActions",
-        "title": "KYC: Show Context Actions",
-        "category": "Know Your Code"
-      },
-      {
         "command": "knowYourCode.switchProvider",
         "title": "KYC: Switch Default AI Model",
         "category": "Know Your Code"
@@ -79,6 +50,11 @@
       {
         "command": "knowYourCode.setApiKey",
         "title": "KYC: Set API Key",
+        "category": "Know Your Code"
+      },
+      {
+        "command": "knowYourCode.stopGeneration",
+        "title": "KYC: Stop Generation",
         "category": "Know Your Code"
       }
     ],
@@ -135,6 +111,10 @@
         },
         {
           "command": "knowYourCode.setApiKey"
+        },
+        {
+          "command": "knowYourCode.stopGeneration",
+          "when": "knowYourCode.isGenerating"
         }
       ]
     },
@@ -162,6 +142,11 @@
         "key": "ctrl+shift+k",
         "mac": "cmd+shift+k",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "knowYourCode.stopGeneration",
+        "key": "escape",
+        "when": "knowYourCode.isGenerating"
       }
     ],
     "configuration": {

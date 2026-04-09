@@ -11,11 +11,13 @@ import { formatCallFlowMarkdown, formatExplanationMarkdown } from "../ui/formatt
 import { ExplainCallFlowInput, SelectedModel } from "../core/types";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
+import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
 
 export function createExplainCallFlowCommand(
   orchestrator: ExplanationOrchestrator,
   modelSelector: ModelSelectionService,
   panel: ExplanationPanel,
+  activeRequestManager: ActiveRequestManager,
   setLastActionRunner: (runner: LastActionRunner | undefined) => void
 ) {
   return async (options?: { forceRefresh?: boolean; selectionOverride?: SelectedModel }) => {
@@ -71,6 +73,15 @@ export function createExplainCallFlowCommand(
       }
     });
 
+    const activeRequest = activeRequestManager.start(selection.modelName);
+    void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", true);
+    panel.showLoading(
+      `KYC: Call Flow — ${context.symbolName}`,
+      selection.providerLabel,
+      selection.modelName,
+      { requestId: activeRequest.requestId, stoppable: true }
+    );
+
     await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
@@ -80,7 +91,8 @@ export function createExplainCallFlowCommand(
       async () => {
         try {
           const { result, meta } = await orchestrator.explainCallFlow(input, selection, {
-            forceRefresh: options?.forceRefresh
+            forceRefresh: options?.forceRefresh,
+            signal: activeRequest.controller.signal
           });
           const markdown = formatCallFlowMarkdown(result, context.symbolName);
           const tutorials = await getTutorialRecommendations(context.code, context.language);
@@ -106,6 +118,10 @@ export function createExplainCallFlowCommand(
             }
           );
         } catch (error) {
+          if (activeRequest.controller.signal.aborted || isAbortError(error)) {
+            panel.showStopped(`KYC: Call Flow — ${context.symbolName}`, selection.providerLabel, selection.modelName);
+            return;
+          }
           const friendly = formatProviderError(error, selection.provider);
           const fallback = buildFallbackExplanation(context, friendly);
           panel.show(
@@ -114,6 +130,9 @@ export function createExplainCallFlowCommand(
             { provider: selection.providerLabel, modelName: selection.modelName, cacheHit: false }
           );
           void vscode.window.showWarningMessage(friendly);
+        } finally {
+          activeRequestManager.complete(activeRequest.requestId);
+          void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", activeRequestManager.hasActive());
         }
       }
     );

@@ -10,6 +10,7 @@ import { createShowConnectedCallsCommand } from "./commands/showConnectedCalls";
 import { createShowContextActionsCommand } from "./commands/showContextActions";
 import { createSwitchProviderCommand } from "./commands/switchProvider";
 import { createSetApiKeyCommand } from "./commands/setApiKey";
+import { ActiveRequestManager } from "./core/activeRequest";
 import { getConfig } from "./core/config";
 import { LastActionRunner } from "./core/lastAction";
 import { ExplanationOrchestrator } from "./core/orchestrator";
@@ -28,7 +29,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const codeReferenceNavigator = new CodeReferenceNavigator();
   const modelSelector = new ModelSelectionService(context, () => config);
   const codeLensProvider = new ContextActionCodeLensProvider(() => config);
+  const activeRequestManager = new ActiveRequestManager();
   let lastActionRunner: LastActionRunner | undefined;
+
+  const updateGeneratingContext = () =>
+    vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", activeRequestManager.hasActive());
 
   panel.onMessage((message) => {
     switch (message.type) {
@@ -61,35 +66,43 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         break;
       }
+      case "stopGeneration": {
+        const payload = message.payload as { requestId?: string } | undefined;
+        const stopped = activeRequestManager.stop(payload?.requestId);
+        if (stopped) {
+          void updateGeneratingContext();
+        }
+        break;
+      }
     }
   });
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "knowYourCode.explainFunction",
-      createExplainCurrentFunctionCommand(orchestrator, modelSelector, panel, (runner) => {
+      createExplainCurrentFunctionCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
     ),
     vscode.commands.registerCommand(
       "knowYourCode.explainLine",
-      createExplainCurrentLineCommand(orchestrator, modelSelector, panel, (runner) => {
+      createExplainCurrentLineCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
     ),
     vscode.commands.registerCommand(
       "knowYourCode.explainCallFlow",
-      createExplainCallFlowCommand(orchestrator, modelSelector, panel, (runner) => {
+      createExplainCallFlowCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
     ),
     vscode.commands.registerCommand(
       "knowYourCode.refreshExplanation",
-      createRefreshExplanationCommand(orchestrator, modelSelector, panel, () => lastActionRunner)
+      createRefreshExplanationCommand(orchestrator, modelSelector, panel, activeRequestManager, () => lastActionRunner)
     ),
     vscode.commands.registerCommand(
       "knowYourCode.runContextAction",
-      createRunContextActionCommand(orchestrator, modelSelector, panel, (runner) => {
+      createRunContextActionCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
     ),
@@ -109,6 +122,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       "knowYourCode.setApiKey",
       createSetApiKeyCommand()
     ),
+    vscode.commands.registerCommand("knowYourCode.stopGeneration", () => {
+      if (activeRequestManager.stop()) {
+        void updateGeneratingContext();
+      }
+    }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration("knowYourCode")) {
         config = getConfig();
@@ -136,6 +154,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     { dispose: () => db.close() }
   );
 
+  void updateGeneratingContext();
   logInfo(`Know Your Code activated. Provider: ${config.activeProvider}`);
 }
 

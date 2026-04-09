@@ -7,6 +7,10 @@ export function formatProviderError(error: unknown, provider: AIProvider): strin
     return `${providerLabel(provider)} API key is not configured. Run "KYC: Set API Key" from the command palette.`;
   }
 
+  if (message.toLowerCase().includes("abort") || message.toLowerCase().includes("cancel")) {
+    return "Generation stopped by user.";
+  }
+
   if (message.includes("fetch failed") || message.includes("Unable to reach")) {
     switch (provider) {
       case "local":
