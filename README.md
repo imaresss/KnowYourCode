@@ -1,332 +1,547 @@
-# KYC — Know Your Code
+# KYC - Know Your Code
 
-A production-ready VS Code extension that helps developers understand code deeply by leveraging multiple AI models (OpenAI, Claude, Gemini) with intelligent caching to reduce token usage and improve performance.
+An intelligent VS Code extension that helps developers understand, analyze, navigate, and learn code using AI, with model-aware caching, contextual code intelligence, tutorial links, clickable explanations, cancellation, and section-level text-to-speech.
 
-## Features
+## Overview
 
-### Code Intelligence Actions
-- **Explain Function** — Deep, beginner-friendly explanation of the function at your cursor
-- **Explain Line** — Focused explanation of a single line of code
-- **Explain Call Flow** — Trace execution flow through callers and callees
-- **Show Connected Calls** — Visualize the call graph around the current function
-- **Regenerate Explanation** — Force a fresh AI call, bypassing cache
+KYC (Know Your Code) is a context-aware AI assistant inside VS Code.
 
-### Multi-Provider AI Support
-- **OpenAI** (GPT-4o, GPT-4o-mini, etc.)
-- **Claude** (Anthropic — Haiku, Sonnet, Opus)
-- **Gemini** (Google — Flash, Pro)
-- **Local** (Ollama or any compatible API)
+It helps you:
 
-Switch between providers dynamically without restarting.
+- Explain functions, the current line, selected code, and call flows
+- Navigate from explanation steps back into the source file
+- Highlight referenced identifiers and walkthrough line ranges
+- Learn built-in APIs through related tutorial links
+- Listen to explanation sections with browser-native Text-to-Speech
+- Stop long-running generations and regenerate the same explanation
+- Reduce repeated API usage with persistent caching
 
-### Smart Caching System
-- SHA-256 content hashing for cache uniqueness
-- SQLite-backed persistent cache (via sql.js)
-- Caches: code snippet, explanation, provider, model, timestamp
-- Automatic cache invalidation on file save
-- Content + dependency hash tracking for precise invalidation
-- Offline mode using cached results
+## Key Features
 
-### Rich Webview UI
-- Modern, theme-aware explanation panel
-- Copy explanation to clipboard
-- Regenerate with one click
-- Switch AI model from the panel
-- Loading spinner during AI calls
+### Code Understanding
 
----
+- **Explain Function** - purpose, walkthrough, inputs, outputs, dependencies, and child function summary
+- **Explain Current Line** - focused explanation of the line under the cursor
+- **Explain Selected Code** - available from KYC context actions
+- **Explain Line-by-Line** - available from KYC context actions
+- **Call Flow Analysis** - execution flow, data flow, entry points, exit points, and side effects
+- **Connected Calls Snapshot** - inspect callers, direct callees, and cached call graph data
+
+### Interactive Code Sync
+
+- Click inline code references in an explanation to highlight them in the editor
+- Click any `Step-by-Step Walkthrough` item with `L123` to navigate to that source line
+- Click a nested range such as `L836-L839` to select and highlight the whole source range
+- Source navigation is file-aware, so it opens the original file instead of relying on webview focus
+
+### Tutorial Integration
+
+KYC detects common built-in APIs used by the code and adds cached tutorial recommendations.
+
+Examples of tutorial sources:
+
+- MDN
+- W3Schools
+- Python docs
+- Oracle / Java docs
+- Other official language or runtime references when available
+
+Tutorials are cached separately from AI explanations so repeated reads stay fast.
+
+### Text-to-Speech
+
+The explanation webview uses the browser-native `speechSynthesis` API.
+
+Supported interactions:
+
+- Speaker button beside explanation sections
+- Section-isolated playback: only the clicked section is spoken
+- Pause / resume by clicking the same section button
+- Stop current playback from the toolbar
+- Stop previous speech when a different section starts
+- Highlight the section while it is speaking or paused
+- Chunk long text before speaking
+- Disable speech buttons when a section is empty or TTS is unavailable
+
+Current narrated sections include sections such as:
+
+- Purpose
+- Step-by-Step Walkthrough
+- Inputs
+- Outputs
+- Dependencies
+- Other generated `##` explanation sections
+
+The `Call Graph` heading is intentionally not given a speaker button.
+
+### Stop Generation
+
+- Click **Stop Generating** while an AI request is running
+- Press `Escape` while the loading panel is focused
+- KYC aborts the active request with `AbortController`
+- The stopped screen includes **Regenerate** so you can retry the same explanation
+
+### Smart Caching
+
+- Function-level explanation cache
+- Selection-level reuse from function cache
+- Model-aware and provider-aware cache keys
+- Dependency hash tracking
+- Tutorial cache
+- Parent + child hierarchical explanation cache
+- Optional TTL configuration
+- Cache invalidation on file save
+- Fresh generation through **Regenerate**
 
 ## Quick Start
 
-### 1. Install Dependencies
+### Install
 
 ```bash
 npm install
 ```
 
-### 2. Build
+### Build
 
 ```bash
 npm run build
 ```
 
-### 3. Launch Extension
+### Launch
 
 Press `F5` in VS Code to open an Extension Development Host.
 
-### 4. Configure an AI Provider
+### Configure a Provider
 
-Open the command palette (`Cmd+Shift+P` / `Ctrl+Shift+P`) and run:
+Run this from the command palette:
 
-```
+```text
 KYC: Set API Key
 ```
 
-Select a provider (OpenAI/Claude/Gemini) and enter your API key.
+Then choose OpenAI, Claude, or Gemini and enter your key.
 
-After API key setup:
-- KYC auto-picks your **default model** for each explain action.
-- You do **not** need to select a model every time.
-- If you want to change the default model, run **KYC: Switch AI Model**.
+You can switch the default model later:
 
-You can also configure defaults in Settings:
-
-| Setting | Default |
-|---------|---------|
-| `knowYourCode.activeProvider` | `openai` |
-| `knowYourCode.openai.apiKey` | *(empty)* |
-| `knowYourCode.openai.modelName` | `gpt-4o-mini` |
-| `knowYourCode.claude.apiKey` | *(empty)* |
-| `knowYourCode.claude.modelName` | `claude-haiku-4-5-20251001` |
-| `knowYourCode.gemini.apiKey` | *(empty)* |
-| `knowYourCode.gemini.modelName` | `gemini-2.0-flash` |
-
-### 5. Explain Code
-
-Place your cursor inside a function and:
-- Right-click → **KYC: Explain Function**
-- Or use `Cmd+Shift+E` / `Ctrl+Shift+E`
-- Or open the command palette → **KYC: Explain Function**
-
-Other explain options:
-- **KYC: Explain Line** for the current line
-- **KYC: Explain Call Flow** for call-chain analysis
-- **KYC: Show Context Actions** to run selection-based actions
-
-### 6. Change Default Model (Optional)
-
-Run:
-
-```
-KYC: Switch AI Model
+```text
+KYC: Switch Default AI Model
 ```
 
-Then pick provider + model. KYC saves this as your default and uses it for future explain actions.
-
-### 7. Regenerate Fresh Output
-
-- Click **Regenerate** in the panel, or run **KYC: Regenerate Explanation**
-- Regenerate always makes a fresh AI call (bypasses cache)
-
----
+Local models can be enabled through the local provider settings.
 
 ## Commands
 
-| Command | Keybinding | Description |
-|---------|-----------|-------------|
-| KYC: Explain Function | `Cmd+Shift+E` | Explain the function at cursor |
-| KYC: Explain Line | `Cmd+Shift+L` | Explain the current line |
-| KYC: Explain Call Flow | `Cmd+Shift+F` | Trace execution flow |
-| KYC: Regenerate Explanation | — | Force fresh AI call |
-| KYC: Show Connected Calls | — | View callers/callees graph |
-| KYC: Switch AI Model | — | Change default provider/model |
-| KYC: Set API Key | — | Configure provider API key |
+| Command | Default Keybinding | What It Does |
+| --- | --- | --- |
+| `KYC: Explain Function` | `Cmd+Shift+E` / `Ctrl+Shift+E` | Explain the function at the cursor or selected function-like code. |
+| `KYC: Explain Line` | `Cmd+Shift+L` / `Ctrl+Shift+L` | Explain the current editor line in context. |
+| `KYC: Explain Call Flow` | `Cmd+Shift+F` / `Ctrl+Shift+F` | Explain execution/data flow for the current function. |
+| `KYC: Show Context Actions` | `Cmd+Shift+K` / `Ctrl+Shift+K` | Show selection-aware actions such as explain selected code. |
+| `KYC: Show Connected Calls` | - | Show callers, callees, and cached call graph details. |
+| `KYC: Switch Default AI Model` | - | Pick provider + model and persist it as default. |
+| `KYC: Set API Key` | - | Configure OpenAI / Claude / Gemini key. |
+| `KYC: Stop Generation` | `Escape` while generating | Abort the current generation. |
 
-All explain commands are also available via right-click context menu.
+## UX Flow
 
----
-
-## Usage Reference
-
-### Explain Actions
-- **KYC: Explain Function** - Explains the function/method at cursor with summary, purpose, steps, inputs, outputs, and dependencies.
-- **KYC: Explain Line** - Explains only the current line in context of the enclosing function.
-- **KYC: Explain Call Flow** - Describes execution flow, data flow, entry/exit points, and side effects.
-- **KYC: Show Context Actions** - Opens selection-aware actions such as explain selected code, summarize selection, find issues, and optimize function.
-- **KYC: Run Context Action** - Internal command used by context actions (normally triggered through Show Context Actions).
-- **KYC: Show Connected Calls** - Shows callers, callees, and cached call graph links for the current function.
-
-### Model and Provider Actions
-- **KYC: Set API Key** - First setup step for OpenAI, Claude, or Gemini. If API key is missing, KYC prompts you to set it.
-- **KYC: Switch AI Model** - Lets you choose provider + model and saves it as your default model.
-- **Default model behavior** - Once a default is set, KYC uses it automatically for explain actions (no repeated model prompt).
-- **Default marker in picker** - In model list, the default entry is shown with `Default` before the model name.
-
-### Regenerate and Cache
-- **KYC: Regenerate Explanation** - Always runs a fresh AI call for the last explanation context (bypasses cache).
-- **Panel cache badges**:
-  - `Cached (ModelName)` = result returned from cache
-  - `Generated (ModelName)` = freshly generated from provider API
-
-### Explanation Panel Buttons
-- **Copy** - Copies current explanation text.
-- **Regenerate** - Same behavior as regenerate command (fresh call).
-- **Switch Model** - Re-runs the same last explanation using a new model and updates default model.
-
-### Key Settings (`knowYourCode.*`)
-- **Provider defaults**
-  - `activeProvider`
-  - `openai.modelName`
-  - `claude.modelName`
-  - `gemini.modelName`
-  - `localModelName`
-- **API keys**
-  - `openai.apiKey`
-  - `claude.apiKey`
-  - `gemini.apiKey`
-- **Enable/disable providers**
-  - `openai.enabled`
-  - `claude.enabled`
-  - `gemini.enabled`
-  - `localEnabled`
-- **Endpoints**
-  - `openai.endpoint`
-  - `claude.endpoint`
-  - `gemini.endpoint`
-  - `localEndpoint`
-- **Performance and UX**
-  - `cacheTtlSeconds`
-  - `prefetchConnectedCalls`
-  - `selectionDebounceMs`
-  - `inlineActionsEnabled`
-
----
-
-## Architecture
-
-```
-src/
-├── extension.ts                 # Entry point — wires commands, lifecycle
-├── cache/
-│   ├── db.ts                    # SQLite database (sql.js) with persistence
-│   ├── explanationRepo.ts       # CRUD operations for cached explanations
-│   └── schema.ts                # DDL for explanations + call_edges tables
-├── commands/
-│   ├── explainCurrentFunction.ts
-│   ├── explainCurrentLine.ts
-│   ├── explainCallFlow.ts
-│   ├── refreshExplanation.ts
-│   ├── showConnectedCalls.ts
-│   ├── switchProvider.ts
-│   └── setApiKey.ts
-├── core/
-│   ├── config.ts                # Multi-provider configuration
-│   ├── types.ts                 # All TypeScript interfaces
-│   ├── orchestrator.ts          # Cache-aware AI call orchestration
-│   ├── providerErrors.ts        # User-friendly error messages
-│   └── fallbackExplanation.ts   # Heuristic fallback when AI fails
-├── intelligence/
-│   ├── symbolResolver.ts        # AST/symbol resolution via VS Code APIs
-│   ├── fingerprint.ts           # Content + dependency hashing
-│   └── contextBuilder.ts        # Build AI input from symbol context
-├── providers/
-│   ├── modelProvider.ts         # Provider interface
-│   ├── openaiProvider.ts        # OpenAI chat completions + streaming
-│   ├── claudeProvider.ts        # Anthropic Messages API + streaming
-│   ├── geminiProvider.ts        # Google Gemini API + streaming
-│   ├── localProvider.ts         # Ollama/local model API
-│   ├── providerFactory.ts       # Provider creation + registry
-│   ├── promptBuilder.ts         # AI prompt templates
-│   └── normalizeExplanation.ts  # Parse/normalize AI responses
-├── ui/
-│   ├── panel.ts                 # Rich webview panel
-│   └── formatter.ts             # Markdown formatters
-├── utils/
-│   ├── hash.ts                  # SHA-256 utility
-│   └── logger.ts                # Output channel logger
-└── types/
-    └── sql-js.d.ts              # sql.js type declarations
+```text
+Cursor / Selection
+        |
+        v
+Resolve function / line / selection context
+        |
+        v
+Choose default or selected model
+        |
+        v
+Check explanation cache
+        |
+   +----+----------------+
+   |                     |
+   v                     v
+Cache hit           Cache miss
+   |                     |
+   v                     v
+Render panel        Call AI provider
+                         |
+                         v
+                    Normalize response
+                         |
+                         v
+                    Save explanation
+                         |
+                         v
+                    Render panel
+        |
+        v
+Copy / Regenerate / Switch / TTS / Click-to-highlight
 ```
 
----
+## Architecture Overview
 
-## Caching Strategy
-
+```text
++-----------------------------+
+|        VS Code Editor       |
++-------------+---------------+
+              |
+              v
++-----------------------------+
+|       KYC Extension Core    |
+|  commands + orchestration   |
++-------------+---------------+
+              |
+  +-----------+------------+----------------+
+  |                        |                |
+  v                        v                v
+Symbol / context      Cache Layer      AI Providers
+resolution            sql.js DB        OpenAI
+VS Code APIs          memory cache     Claude
+text dependency scan  repositories     Gemini
+                                       Local
+  |
+  v
++-----------------------------+
+|     Webview Response Panel  |
+|  rendered HTML/CSS/JS       |
+|  TTS controls               |
+|  tutorial links             |
+|  clickable code references  |
++-----------------------------+
 ```
-User requests explanation
-        │
-        ▼
-  Hash code content (SHA-256)
-        │
-        ▼
-  Look up cache by:
-    symbol_key + content_hash + dependency_hash
-    + model_name + provider + prompt_version
-        │
-        ├── Cache HIT  → Return instantly (0 API cost)
-        │
-        └── Cache MISS → Call AI provider
-                │
-                ▼
-          Store result in SQLite
-                │
-                ▼
-          Return explanation
+
+## Chunking / Hunking Strategy
+
+KYC tries to reason about logical code regions instead of treating every request as unrelated raw text.
+
+```text
+Raw editor document
+        |
+        v
+VS Code document symbols
+        |
+        v
+Function / method context
+        |
+        v
++-----------------------+
+| Parent function A     |
+| - direct callee B     |
+| - direct callee C     |
+| - direct callee D     |
++-----------------------+
+        |
+        v
+AI prompt + dependency metadata
 ```
 
-Cache is invalidated:
-- On file save (all entries for that file)
-- On code change (content hash mismatch)
-- On dependency change (dependency hash mismatch)
-- On provider/model switch (different cache key)
-- Manually via "Regenerate Explanation"
+### Explanation Strategy
 
----
+| Scope | Behavior |
+| --- | --- |
+| Parent function | Fully explained with structured JSON result. |
+| Direct child functions | Summarized through hierarchical explanation; cache is reused when available. |
+| Deeper nested calls | Resolved on demand through follow-up actions / direct cursor actions. |
+| Selected code | May reuse the cached enclosing function explanation. |
 
-## Sample AI Prompt
+## Caching Architecture
 
-The prompt sent to AI providers includes:
+KYC stores explanations in a persistent sql.js-backed database under the extension global storage path.
 
+The effective explanation lookup includes:
+
+```text
+symbol_key
++ explanation_type
++ content_hash
++ dependency_hash
++ provider
++ model_name
++ prompt_version
 ```
-You are a senior code analyst explaining code to developers of all experience levels.
-Your explanations must be:
-  1. Accurate and technically precise
-  2. Accessible to beginners (avoid jargon without definition)
-  3. Comprehensive (cover purpose, logic, edge cases)
-  4. Actionable (help the reader understand AND modify the code confidently)
 
-Return ONLY valid JSON with keys:
-  summary, purpose, stepByStep, inputs, outputs, dependencies
+### Cache Types
 
---- CODE CONTEXT ---
-Function: saveOrder
-Language: typescript
-File: /src/services/orderService.ts
-Signature: async saveOrder(order: Order): Promise<Order>
-...
-Callers:
-  - handleCheckout | async handleCheckout(req, res)
-Callees:
-  - validateOrder | validateOrder(order: Order): boolean
-  - persist | persist(order: Order): Promise<Order>
+#### Function / Action Explanation Cache
 
---- FUNCTION CODE ---
-async saveOrder(order: Order): Promise<Order> {
-  ...
+```json
+{
+  "symbolKey": "src/example.ts::saveOrder",
+  "explanationType": "explainFunction",
+  "contentHash": "sha256-of-code",
+  "dependencyHash": "sha256-of-connected-context",
+  "provider": "openai",
+  "modelName": "gpt-4o-mini",
+  "result": {
+    "summary": "Saves an order after validation",
+    "purpose": "...",
+    "stepByStep": [],
+    "inputs": [],
+    "outputs": [],
+    "dependencies": []
+  }
 }
 ```
 
----
+#### Selection Cache Reuse
 
-## Streaming Support
+```text
+Selection inside function
+        |
+        v
+Find latest compatible function explanation
+        |
+        v
+Filter walkthrough / inputs / outputs by line range and identifiers
+        |
+        v
+Render relevant subset without a new AI call
+```
 
-OpenAI, Claude, and Gemini providers support Server-Sent Events (SSE) streaming. When available, the extension streams raw text to the panel in real-time, then renders the formatted result on completion.
+#### Tutorial Cache
 
----
+```json
+{
+  "codeHash": "sha256-of-code",
+  "language": "typescript",
+  "tutorials": [
+    {
+      "identifier": "map",
+      "summary": "Transforms array items into a new array.",
+      "sources": []
+    }
+  ]
+}
+```
 
-## Running Tests
+## Cache Flow
+
+```text
+User action
+   |
+   v
+Build context
+   |
+   v
+Compute code + dependency hash
+   |
+   v
+Check cache
+   |
+ +-+----------------+
+ |                  |
+ v                  v
+Hit                Miss
+ |                  |
+ v                  v
+Return fast       Call provider
+                    |
+                    v
+                 Save cache
+                    |
+                    v
+                 Return explanation
+```
+
+## JSON Parsing Pipeline
+
+Providers are instructed to return structured JSON, but KYC defensively handles imperfect model output.
+
+```text
+Raw response
+   |
+   v
+Normalize text
+remove markdown fences / HTML entities
+   |
+   v
+Extract likely JSON object
+   |
+   v
+Repair common JSON issues
+   |
+   v
+Safe parse + normalize
+   |
+ +-+----------------+
+ |                  |
+ v                  v
+Success            Failure
+ |                  |
+ v                  v
+Structured UI      Fallback explanation
+```
+
+## Providers
+
+KYC supports:
+
+- OpenAI chat completions compatible endpoint
+- Anthropic Claude Messages API
+- Google Gemini Generate Content API
+- Local Ollama-compatible generate endpoint
+
+OpenAI, Claude, and Gemini provider implementations can consume streaming HTTP responses where available.
+
+## API Key and Configuration Notes
+
+KYC provides a **Set API Key** command and reads provider configuration from VS Code settings.
+
+Important configuration keys:
+
+| Setting | Purpose |
+| --- | --- |
+| `knowYourCode.activeProvider` | Default provider ID. |
+| `knowYourCode.openai.enabled` | Enable OpenAI in picker. |
+| `knowYourCode.openai.apiKey` | OpenAI API key. |
+| `knowYourCode.openai.modelName` | Default OpenAI model. |
+| `knowYourCode.claude.enabled` | Enable Claude in picker. |
+| `knowYourCode.claude.apiKey` | Anthropic API key. |
+| `knowYourCode.claude.modelName` | Default Claude model. |
+| `knowYourCode.gemini.enabled` | Enable Gemini in picker. |
+| `knowYourCode.gemini.apiKey` | Gemini API key. |
+| `knowYourCode.gemini.modelName` | Default Gemini model. |
+| `knowYourCode.localEnabled` | Enable local provider in picker. |
+| `knowYourCode.localEndpoint` | Local provider endpoint. |
+| `knowYourCode.localModelName` | Local model name. |
+| `knowYourCode.cacheTtlSeconds` | Optional explanation cache TTL. |
+| `knowYourCode.prefetchConnectedCalls` | Prefetch direct callees after a function explanation. |
+| `knowYourCode.selectionDebounceMs` | Debounce/reuse window for repeated requests. |
+
+Do not commit user-level VS Code settings that contain API keys.
+
+## Tech Stack
+
+- VS Code Extension API
+- TypeScript
+- Native VS Code Webview: HTML / CSS / browser JS
+- sql.js for persistent cache storage
+- VS Code document symbols / references
+- Fetch-based OpenAI / Claude / Gemini / local providers
+- `AbortController` for cancellation
+- Browser `speechSynthesis` for TTS
+
+## Performance Optimizations
+
+- Content hashing
+- Dependency hashing
+- Provider/model-aware persistent cache
+- Memory cache over repository lookups
+- Selection-to-function cache reuse
+- Tutorial function-to-selection reuse
+- Direct callee prefetch
+- Incremental explanation path for compatible edits
+- Request abortion and superseding
+- Debounced request and click handlers
+
+## Development
+
+### Build
+
+```bash
+npm run build
+```
+
+### Type-check
+
+```bash
+npm run lint
+```
+
+### Watch
+
+```bash
+npm run watch
+```
+
+### Test
 
 ```bash
 npm test
 ```
 
-Tests cover:
-- Content/dependency hashing and fingerprinting
-- AI response normalization (structured JSON + plain text fallback)
-- Repository CRUD, invalidation, and cache statistics
+### Run the Extension
 
----
+1. Open this repository in VS Code.
+2. Run `npm install`.
+3. Run `npm run build`.
+4. Press `F5`.
+5. In the Extension Development Host, open a code file and run `KYC: Explain Function`.
 
-## Development
+## Repository Map
 
-```bash
-npm run watch   # TypeScript watch mode
+```text
+src/
+  extension.ts                         extension activation and command wiring
+  cache/
+    db.ts                              sql.js database lifecycle
+    explanationRepo.ts                 explanation repository
+    tutorialRepo.ts                    tutorial recommendation repository
+    schema.ts                          DB schema
+  commands/
+    explainCurrentFunction.ts          function explanation command
+    explainCurrentLine.ts              line explanation command
+    explainCallFlow.ts                 call flow command
+    refreshExplanation.ts              regenerate command
+    runContextAction.ts                selection/context action runner
+    showConnectedCalls.ts              connected-call snapshot command
+    showContextActions.ts              context action picker
+    setApiKey.ts                       provider API-key command
+    switchProvider.ts                  model/provider switch command
+  core/
+    orchestrator.ts                    cache-aware AI orchestration
+    codeReferences.ts                  source navigation and highlighting
+    cacheReuse.ts                      function-to-selection reuse
+    hierarchicalExplain.ts             parent/direct-child explanation flow
+    responseParser.ts                  generic model response parsing
+    activeRequest.ts                   cancellation state
+    config.ts                          settings loader
+    types.ts                           shared domain types
+  context/
+    actionRegistry.ts                  available context actions
+    interactionContext.ts              cursor/selection context
+  intelligence/
+    symbolResolver.ts                  symbol, caller, callee resolution
+    fingerprint.ts                     content/dependency hashes
+    contextBuilder.ts                  provider input builder
+  providers/
+    openaiProvider.ts                  OpenAI provider
+    claudeProvider.ts                  Claude provider
+    geminiProvider.ts                  Gemini provider
+    localProvider.ts                   local provider
+    normalizeExplanation.ts            provider-output normalization
+    promptBuilder.ts                   prompts
+  tutorials/
+    recommendations.ts                 built-in API tutorial detection
+  ui/
+    formatter.ts                       markdown response formatting
+    panel.ts                           webview response panel
 ```
 
-Press `F5` to launch the Extension Development Host. The extension reloads on rebuild.
+## Current Limitations
 
----
+- The response panel is a native VS Code webview, not a React app.
+- API keys are currently read from VS Code configuration.
+- Code navigation works best for files that contributed references to the generated panel.
+- TTS quality, voices, and availability depend on the VS Code webview runtime and operating system voices.
 
-## License
+## Roadmap
 
-Private — not published to marketplace yet.
+- Bidirectional sync: code selection to explanation section
+- Deeper interactive call graph visualization
+- Multi-file dependency map panel
+- Optional voice/rate/pitch settings panel
+- Streaming formatted responses
+- Live TTS for streamed responses
+- Team-shared cache backend
+- SecretStorage migration for API keys
+
+## Conclusion
+
+KYC is designed as a developer intelligence layer for VS Code:
+
+- context-aware explanations
+- fast cached reuse
+- linked source navigation
+- learning resources
+- accessible listening controls
+- cancellation and regeneration for day-to-day flow
