@@ -121,6 +121,8 @@ export function buildIncrementalExplainPrompt(
     ? `The developer made a single localized edit (${diff.changedLines} lines changed).`
     : `The developer made changes in ${diff.regionCount} locations (${diff.changedLines} total lines changed). These changes may be semantically related — consider them together.`;
 
+  const trimmedPrevious = buildTrimmedPrevious(previousResult, diff);
+
   return [
     "You are a senior code analyst. A function was previously explained. A small edit was made.",
     changeDescription,
@@ -137,13 +139,55 @@ export function buildIncrementalExplainPrompt(
     "Return ONLY valid JSON. No markdown fences, no prose.",
     "",
     `Function: ${input.symbolName} | ${input.language} | Lines ${input.range.startLine}-${input.range.endLine}`,
+    `Total steps in previous explanation: ${previousResult.stepByStep.length}`,
     "",
-    "PREVIOUS EXPLANATION:",
-    JSON.stringify(previousResult),
+    "PREVIOUS EXPLANATION (summary + nearby steps only):",
+    JSON.stringify(trimmedPrevious),
     "",
     "DIFF:",
     diff.unifiedDiff
   ].join("\n");
+}
+
+function buildTrimmedPrevious(
+  result: ExplainFunctionResult,
+  diff: DiffAnalysis
+): Record<string, unknown> {
+  const changedLineSet = new Set<number>();
+  for (const region of diff.regions) {
+    const pad = 5;
+    for (let l = region.newStartLine - pad; l <= region.newStartLine + region.linesAdded + pad; l++) {
+      changedLineSet.add(l);
+    }
+    for (let l = region.oldStartLine - pad; l <= region.oldStartLine + region.linesRemoved + pad; l++) {
+      changedLineSet.add(l);
+    }
+  }
+
+  const nearbySteps: string[] = [];
+  for (let i = 0; i < result.stepByStep.length; i++) {
+    const step = result.stepByStep[i];
+    const lineMatch = step.match(/^L(\d+)(?:-L?(\d+))?:/i);
+    if (lineMatch) {
+      const start = Number(lineMatch[1]);
+      const end = lineMatch[2] ? Number(lineMatch[2]) : start;
+      let isNearby = false;
+      for (let l = start; l <= end; l++) {
+        if (changedLineSet.has(l)) { isNearby = true; break; }
+      }
+      if (isNearby) {
+        nearbySteps.push(`[${i}] ${step}`);
+        continue;
+      }
+    }
+    nearbySteps.push(`[${i}] (unchanged)`);
+  }
+
+  return {
+    summary: result.summary,
+    purpose: result.purpose,
+    stepByStep_nearby: nearbySteps
+  };
 }
 
 const SYSTEM_PREAMBLE = [

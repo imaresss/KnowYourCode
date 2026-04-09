@@ -7,7 +7,7 @@ import { ExplanationOrchestrator } from "../core/orchestrator";
 import { formatProviderError } from "../core/providerErrors";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
-import { formatExplanationMarkdown } from "../ui/formatter";
+import { formatExplanationMarkdown, CallGraphContext } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
 
@@ -55,7 +55,12 @@ export function createRefreshExplanationCommand(
         try {
           const { result, meta } = await orchestrator.explainFunction(input, selection, { forceRefresh: true });
           void orchestrator.prefetchConnectedContexts(context, selection);
-          const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine);
+          const callGraph: CallGraphContext = {
+            symbolName: context.symbolName,
+            callers: context.callers,
+            callees: context.callees
+          };
+          const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine, callGraph);
           const tutorials = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,

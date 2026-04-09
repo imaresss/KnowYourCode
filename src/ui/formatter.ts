@@ -7,14 +7,25 @@ import {
   RelatedSymbol
 } from "../core/types";
 
+export interface CallGraphContext {
+  symbolName: string;
+  callers: RelatedSymbol[];
+  callees: RelatedSymbol[];
+}
+
 export function formatExplanationMarkdown(
   result: ExplainFunctionResult,
   _code?: string,
-  _startLine?: number
+  _startLine?: number,
+  callGraph?: CallGraphContext
 ): string {
   const sections: string[] = [];
 
   sections.push(`# ${result.summary}`);
+
+  if (callGraph && (callGraph.callers.length > 0 || callGraph.callees.length > 0)) {
+    sections.push(formatCallGraph(callGraph));
+  }
 
   sections.push("## Purpose");
   sections.push(result.purpose);
@@ -36,6 +47,36 @@ export function formatExplanationMarkdown(
   sections.push(deps.map((item) => `- ${item}`).join("\n"));
 
   return sections.join("\n\n");
+}
+
+function formatCallGraph(graph: CallGraphContext): string {
+  const lines: string[] = [];
+  lines.push("## Call Graph");
+  lines.push("");
+
+  if (graph.callers.length > 0) {
+    lines.push("**Called by:**");
+    for (const caller of graph.callers) {
+      const file = path.basename(caller.filePath);
+      lines.push(`- \`${caller.name}\`${caller.signature ? ` — ${caller.signature}` : ""} *(${file})*`);
+    }
+    lines.push("");
+  }
+
+  lines.push(`**\`${graph.symbolName}\`**`);
+  lines.push("");
+
+  if (graph.callees.length > 0) {
+    lines.push("**Calls:**");
+    for (const callee of graph.callees) {
+      const file = path.basename(callee.filePath);
+      lines.push(`- \`${callee.name}\`${callee.signature ? ` — ${callee.signature}` : ""} *(${file})*`);
+    }
+  } else {
+    lines.push("*No outgoing calls detected.*");
+  }
+
+  return lines.join("\n");
 }
 
 export function formatLineExplanationMarkdown(

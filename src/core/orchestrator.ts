@@ -416,20 +416,21 @@ export class ExplanationOrchestrator {
 function parseIncrementalResult(raw: string, fallback: ExplainFunctionResult): ExplainFunctionResult {
   const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
   const parsed = parseJsonObjectFromModelText<Record<string, unknown>>(cleaned);
-  if (parsed) {
-    return {
-      summary: String(parsed.summary ?? fallback.summary),
-      purpose: String(parsed.purpose ?? fallback.purpose),
-      stepByStep: Array.isArray(parsed.stepByStep) ? parsed.stepByStep.map(String) : fallback.stepByStep,
-      inputs: Array.isArray(parsed.inputs) ? parsed.inputs.map(String) : fallback.inputs,
-      outputs: Array.isArray(parsed.outputs) ? parsed.outputs.map(String) : fallback.outputs,
-      dependencies: Array.isArray(parsed.dependencies) ? parsed.dependencies.map(String) : fallback.dependencies,
-      risks: Array.isArray(parsed.risks) ? parsed.risks.map(String) : (fallback.risks ?? []),
-      connectedFlow: Array.isArray(parsed.connectedFlow) ? parsed.connectedFlow.map(String) : (fallback.connectedFlow ?? []),
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : (fallback.confidence ?? 0)
-    };
+  if (!parsed) {
+    return fallback;
   }
-  return fallback;
+
+  return {
+    summary: String(parsed.summary ?? fallback.summary),
+    purpose: String(parsed.purpose ?? fallback.purpose),
+    stepByStep: Array.isArray(parsed.stepByStep) ? parsed.stepByStep.map(String) : fallback.stepByStep,
+    inputs: Array.isArray(parsed.inputs) ? parsed.inputs.map(String) : fallback.inputs,
+    outputs: Array.isArray(parsed.outputs) ? parsed.outputs.map(String) : fallback.outputs,
+    dependencies: Array.isArray(parsed.dependencies) ? parsed.dependencies.map(String) : fallback.dependencies,
+    risks: Array.isArray(parsed.risks) ? parsed.risks.map(String) : (fallback.risks ?? []),
+    connectedFlow: Array.isArray(parsed.connectedFlow) ? parsed.connectedFlow.map(String) : (fallback.connectedFlow ?? []),
+    confidence: typeof parsed.confidence === "number" ? parsed.confidence : (fallback.confidence ?? 0)
+  };
 }
 
 function parseLineResult(raw: string): ExplainLineResult {

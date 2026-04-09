@@ -8,7 +8,7 @@ import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { SelectedModel } from "../core/types";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { ExplanationPanel } from "../ui/panel";
-import { formatExplanationMarkdown } from "../ui/formatter";
+import { formatExplanationMarkdown, CallGraphContext } from "../ui/formatter";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
 
@@ -72,7 +72,12 @@ export function createExplainCurrentFunctionCommand(
             forceRefresh: options?.forceRefresh
           });
           void orchestrator.prefetchConnectedContexts(context, selection);
-          const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine);
+          const callGraph: CallGraphContext = {
+            symbolName: context.symbolName,
+            callers: context.callers,
+            callees: context.callees
+          };
+          const markdown = formatExplanationMarkdown(result, context.code, context.range.startLine, callGraph);
           const tutorials = await getTutorialRecommendations(context.code, context.language);
           const references = await buildCodeReferenceMapForDocument(markdown, editor.document, {
             focusedRange: editor.selection,

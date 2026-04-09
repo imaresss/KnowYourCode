@@ -20,8 +20,9 @@ export function analyzeDiff(oldCode: string, newCode: string, contextLines = 5):
   let addedLines = 0;
   let removedLines = 0;
   for (const edit of edits) {
-    if (edit.type === "add") { addedLines++; }
-    if (edit.type === "remove") { removedLines++; }
+    const isBlank = edit.line.trim().length === 0;
+    if (edit.type === "add" && !isBlank) { addedLines++; }
+    if (edit.type === "remove" && !isBlank) { removedLines++; }
   }
 
   const changedLines = addedLines + removedLines;
