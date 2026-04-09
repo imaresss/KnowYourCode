@@ -108,6 +108,15 @@ export class CodeReferenceNavigator {
     }, 90);
   }
 
+  public scheduleHighlightLine(lineNumber: number, endLineNumber?: number, filePath?: string): void {
+    if (this.clickDebounceTimer) {
+      clearTimeout(this.clickDebounceTimer);
+    }
+    this.clickDebounceTimer = setTimeout(() => {
+      void this.highlightLine(lineNumber, endLineNumber, filePath);
+    }, 90);
+  }
+
   private async highlight(
     rawIdentifier: string,
     mappedOccurrences: CodeReferenceOccurrence[],
@@ -135,6 +144,57 @@ export class CodeReferenceNavigator {
     }
 
     await this.focusOccurrence(chosen, identifier);
+  }
+
+  private async highlightLine(lineNumber: number, endLineNumber?: number, filePath?: string): Promise<void> {
+    if (!Number.isFinite(lineNumber) || lineNumber <= 0) {
+      void vscode.window.showWarningMessage("KYC: Invalid line reference.");
+      return;
+    }
+
+    const editor = await this.showLineTargetEditor(filePath);
+    if (!editor) {
+      void vscode.window.showInformationMessage("KYC: Could not find the source file for this walkthrough step.");
+      return;
+    }
+
+    const normalizedEndLine = Number.isFinite(endLineNumber) && typeof endLineNumber === "number"
+      ? Math.max(lineNumber, endLineNumber)
+      : lineNumber;
+    const zeroBasedStartLine = clamp(Math.round(lineNumber) - 1, 0, editor.document.lineCount - 1);
+    const zeroBasedEndLine = clamp(Math.round(normalizedEndLine) - 1, zeroBasedStartLine, editor.document.lineCount - 1);
+    const startTextLine = editor.document.lineAt(zeroBasedStartLine);
+    const endTextLine = editor.document.lineAt(zeroBasedEndLine);
+    const firstNonWhitespace = startTextLine.firstNonWhitespaceCharacterIndex;
+    const startChar = startTextLine.isEmptyOrWhitespace ? 0 : firstNonWhitespace;
+    const range = new vscode.Range(
+      new vscode.Position(zeroBasedStartLine, startChar),
+      endTextLine.range.end
+    );
+    editor.selection = new vscode.Selection(range.start, range.end);
+    editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+    this.applyTemporaryHighlight(editor, range);
+    const statusLine = lineNumber === normalizedEndLine
+      ? `line ${lineNumber}`
+      : `lines ${lineNumber}-${normalizedEndLine}`;
+    void vscode.window.setStatusBarMessage(`KYC: Focused ${statusLine}`, 2000);
+  }
+
+  private async showLineTargetEditor(filePath?: string): Promise<vscode.TextEditor | undefined> {
+    if (!filePath) {
+      return vscode.window.activeTextEditor;
+    }
+
+    const doc = await vscode.workspace.openTextDocument(filePath);
+    const existingEditor = vscode.window.visibleTextEditors.find(
+      (editor) => editor.document.uri.toString() === doc.uri.toString()
+    );
+    const preferredEditor = existingEditor ?? vscode.window.activeTextEditor;
+    return vscode.window.showTextDocument(doc, {
+      preview: false,
+      preserveFocus: false,
+      viewColumn: preferredEditor?.viewColumn
+    });
   }
 
   private scoreOccurrences(

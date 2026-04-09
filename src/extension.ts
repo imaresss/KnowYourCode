@@ -70,6 +70,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         break;
       }
+      case "highlightLine": {
+        const payload = message.payload as { filePath?: string; line?: number; endLine?: number } | undefined;
+        if (typeof payload?.line === "number") {
+          codeReferenceNavigator.scheduleHighlightLine(payload.line, payload.endLine, payload.filePath);
+        }
+        break;
+      }
       case "stopGeneration": {
         const payload = message.payload as { requestId?: string } | undefined;
         const stopped = activeRequestManager.stop(payload?.requestId);

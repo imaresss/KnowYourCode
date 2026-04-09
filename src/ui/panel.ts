@@ -145,6 +145,8 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   const tutorialsHtml = buildTutorialsHtml(options.tutorials ?? [], options.tutorialsCached);
   const referenceLookupJson = JSON.stringify(buildReferenceLookup(references))
     .replace(/</g, "\\u003c");
+  const sourceFilePathJson = JSON.stringify(findDefaultSourceFilePath(references))
+    .replace(/</g, "\\u003c");
   const provider = options.provider ?? "unknown";
   const cacheLabel = options.cacheLabel ?? (options.cacheHit ? "Cached" : "Generated");
   const modelName = options.modelName ?? provider;
@@ -195,8 +197,10 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
     const content = document.getElementById('content');
     const stopSpeechBtn = document.getElementById('stopSpeechBtn');
     const referenceLookup = ${referenceLookupJson};
+    const sourceFilePath = ${sourceFilePathJson};
     const tts = createTtsController(content, stopSpeechBtn);
 
+    enhanceLineNavigation(content);
     enhanceSectionSpeechControls(content, tts);
 
     document.getElementById('copyBtn').addEventListener('click', () => {
@@ -231,6 +235,22 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       if (!(target instanceof HTMLElement)) {
         return;
       }
+      const lineLink = target.closest('.kyc-line-link');
+      if (lineLink instanceof HTMLElement) {
+        const lineNumber = Number(lineLink.dataset.line);
+        const endLineNumber = Number(lineLink.dataset.endLine);
+        if (Number.isFinite(lineNumber) && lineNumber > 0) {
+          vscode.postMessage({
+            type: 'highlightLine',
+            payload: {
+              filePath: sourceFilePath,
+              line: lineNumber,
+              endLine: Number.isFinite(endLineNumber) && endLineNumber > 0 ? endLineNumber : lineNumber
+            }
+          });
+          return;
+        }
+      }
       const ref = target.closest('.kyc-ref');
       let identifier = ref instanceof HTMLElement ? ref.dataset.id : undefined;
       if (!identifier) {
@@ -254,17 +274,71 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
     });
 
     function extractLineHint(element) {
+      return extractLineRange(element)?.startLine;
+    }
+
+    function extractLineRange(element) {
       if (!(element instanceof HTMLElement)) {
         return undefined;
       }
       const container = element.closest('li, p, div, section, article') || element;
       const text = (container && 'innerText' in container ? container.innerText : element.innerText) || '';
-      const match = text.match(/\\bL(\\d+)(?:-\\d+)?\\b/i);
+      const match = text.match(/\\bL(\\d+)(?:-L?(\\d+))?\\b/i);
       if (!match) {
         return undefined;
       }
-      const lineNumber = Number(match[1]);
-      return Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined;
+      const startLine = Number(match[1]);
+      const explicitEndLine = Number(match[2]);
+      if (!Number.isFinite(startLine) || startLine <= 0) {
+        return undefined;
+      }
+      const endLine = Number.isFinite(explicitEndLine) && explicitEndLine >= startLine
+        ? explicitEndLine
+        : startLine;
+      return { startLine, endLine };
+    }
+
+    function enhanceLineNavigation(root) {
+      if (!root) {
+        return;
+      }
+      const walkthrough = findSectionHeading(root, 'step-by-step walkthrough');
+      if (!walkthrough) {
+        return;
+      }
+
+      collectSectionSpeechTarget(walkthrough).forEach((node) => {
+        if (!(node instanceof HTMLElement)) {
+          return;
+        }
+        node.querySelectorAll('li').forEach((item) => {
+          const lineRange = extractLineRange(item);
+          if (!lineRange) {
+            return;
+          }
+          item.classList.add('kyc-line-link');
+          item.dataset.line = String(lineRange.startLine);
+          item.dataset.endLine = String(lineRange.endLine);
+          item.title = lineRange.startLine === lineRange.endLine
+            ? 'Click to highlight line ' + lineRange.startLine + ' in code'
+            : 'Click to highlight lines ' + lineRange.startLine + '-' + lineRange.endLine + ' in code';
+          item.tabIndex = 0;
+          item.setAttribute('role', 'button');
+          item.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              item.click();
+            }
+          });
+        });
+      });
+    }
+
+    function findSectionHeading(root, title) {
+      return Array.from(root.querySelectorAll('h2.section-title')).find((heading) => {
+        const text = heading.textContent ? heading.textContent.trim().toLowerCase() : '';
+        return text === title;
+      });
     }
 
     function enhanceSectionSpeechControls(root, ttsController) {
@@ -863,6 +937,19 @@ const CSS = `
     background: color-mix(in srgb, var(--accent) 20%, transparent);
   }
 
+  .kyc-line-link {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 2px 4px;
+    transition: background-color 0.15s ease, outline-color 0.15s ease;
+  }
+
+  .kyc-line-link:hover,
+  .kyc-line-link:focus {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+
   hr {
     border: none;
     border-top: 1px solid var(--border);
@@ -1052,6 +1139,16 @@ function buildReferenceLookup(references: CodeReferenceMapEntry[]): Record<strin
     lookup[id] = reference.occurrences;
   }
   return lookup;
+}
+
+function findDefaultSourceFilePath(references: CodeReferenceMapEntry[]): string | undefined {
+  for (const reference of references) {
+    const occurrence = reference.occurrences[0];
+    if (occurrence?.filePath) {
+      return occurrence.filePath;
+    }
+  }
+  return undefined;
 }
 
 function buildTutorialsHtml(tutorials: TutorialRecommendation[], fromCache?: boolean): string {
