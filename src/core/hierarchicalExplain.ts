@@ -19,6 +19,8 @@ const MAX_CHILDREN = 8;
 export interface HierarchicalExplainOptions {
   forceRefresh?: boolean;
   signal?: AbortSignal;
+  /** When false, only list direct callees without generating explanations. */
+  explainChildren?: boolean;
 }
 
 export interface HierarchicalExplainResponse {
@@ -43,15 +45,19 @@ export async function explainFunctionHierarchical(
 
   void orchestrator.prefetchConnectedContexts(context, selection);
 
-  const children = await resolveAndExplainChildren(
-    orchestrator,
-    context.callees,
-    context.symbolName,
-    selection,
-    options.signal
-  );
+  const children = options.explainChildren === false
+    ? listChildrenOnly(context.callees)
+    : await resolveAndExplainChildren(
+      orchestrator,
+      context.callees,
+      context.symbolName,
+      selection,
+      options.signal
+    );
 
-  const childTokens = aggregateChildTokenUsage(children, parentMeta.tokenUsage);
+  const childTokens = options.explainChildren === false
+    ? undefined
+    : aggregateChildTokenUsage(children, parentMeta.tokenUsage);
 
   return {
     hierarchical: {
@@ -63,6 +69,26 @@ export async function explainFunctionHierarchical(
     meta: parentMeta,
     childTokenUsage: childTokens
   };
+}
+
+function listChildrenOnly(callees: RelatedSymbol[]): ChildExplanation[] {
+  const seen = new Set<string>();
+  const children: ChildExplanation[] = [];
+  for (const callee of callees.slice(0, MAX_CHILDREN)) {
+    const key = `${callee.name}::${callee.filePath}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    children.push({
+      symbolName: callee.name,
+      filePath: callee.filePath,
+      signature: callee.signature,
+      source: "skipped",
+      error: "Nested function explanation disabled"
+    });
+  }
+  return children;
 }
 
 export async function explainChildFunctions(

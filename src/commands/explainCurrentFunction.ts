@@ -64,10 +64,7 @@ export function createExplainCurrentFunctionCommand(
     const activeRequest = activeRequestManager.start(selection.modelName);
     void vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", true);
 
-    const hasCallees = context.callees.length > 0;
-    const loadingTitle = hasCallees
-      ? `KYC: Explaining ${context.symbolName} + ${context.callees.length} child call(s)`
-      : `KYC: Explaining ${context.symbolName}`;
+    const loadingTitle = `KYC: Explaining ${context.symbolName}`;
 
     panel.showLoading(
       loadingTitle,
@@ -84,15 +81,11 @@ export function createExplainCurrentFunctionCommand(
       },
       async () => {
         try {
-          const { hierarchical, meta } = await explainFunctionHierarchical(
-            orchestrator,
-            context,
-            selection,
-            {
-              forceRefresh: options?.forceRefresh,
-              signal: activeRequest.controller.signal
-            }
-          );
+          const { hierarchical, meta } = await explainFunctionHierarchical(orchestrator, context, selection, {
+            forceRefresh: options?.forceRefresh,
+            signal: activeRequest.controller.signal,
+            explainChildren: false
+          });
 
           const callGraph: CallGraphContext = {
             symbolName: context.symbolName,
@@ -119,12 +112,6 @@ export function createExplainCurrentFunctionCommand(
             ]
           });
 
-          const cachedCount = hierarchical.children.filter((c) => c.source === "cache").length;
-          const generatedCount = hierarchical.children.filter((c) => c.source === "generated").length;
-          const childSuffix = hierarchical.children.length > 0
-            ? ` — ${cachedCount} cached, ${generatedCount} generated`
-            : "";
-
           const titleSuffix = meta.cacheHit
             ? " (cached)"
             : meta.incremental
@@ -132,7 +119,7 @@ export function createExplainCurrentFunctionCommand(
               : "";
 
           panel.show(
-            `KYC: ${context.symbolName}${titleSuffix}${childSuffix}`,
+            `KYC: ${context.symbolName}${titleSuffix}`,
             markdown,
             {
               provider: meta.providerLabel,

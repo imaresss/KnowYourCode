@@ -99,7 +99,7 @@ function markdownToHtml(md: string): string {
 
   html = html.replace(/^# (.+)$/gm, '<h1 class="title">$1</h1>');
   html = html.replace(/^## (.+)$/gm, '<h2 class="section-title">$1</h2>');
-  html = html.replace(/^### (.+)$/gm, (_match, content: string) => formatChildHeading(content));
+  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
 
   html = html.replace(/```\n([\s\S]*?)```/g, '<pre class="code-block"><code>$1</code></pre>');
   html = html.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>');
@@ -137,17 +137,6 @@ function markdownToHtml(md: string): string {
   html = html.replace(/<p>\s*<\/p>/g, "");
 
   return html;
-}
-
-function formatChildHeading(content: string): string {
-  const badgeMatch = content.match(/^(.+?)\s*\((Cached|Generated|Skipped|External)\)\s*$/);
-  if (!badgeMatch) {
-    return `<h3>${content}</h3>`;
-  }
-  const name = badgeMatch[1].trim();
-  const status = badgeMatch[2].toLowerCase();
-  const badgeClass = `child-badge child-badge-${status}`;
-  return `<h3>${name} <span class="${badgeClass}">${badgeMatch[2]}</span></h3>`;
 }
 
 function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
@@ -256,22 +245,6 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       return Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined;
     }
 
-    window.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-      const explainBtn = target.closest('.child-explain-btn');
-      if (explainBtn instanceof HTMLElement && explainBtn.dataset.name && explainBtn.dataset.file) {
-        vscode.postMessage({
-          type: 'explainChild',
-          payload: {
-            symbolName: explainBtn.dataset.name,
-            filePath: explainBtn.dataset.file
-          }
-        });
-      }
-    });
   </script>
 </body>
 </html>`;
@@ -628,56 +601,6 @@ const CSS = `
   .stopped-icon {
     font-size: 32px;
     line-height: 1;
-  }
-
-  h3 .child-badge {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 10px;
-    font-size: 10px;
-    font-weight: 600;
-    vertical-align: middle;
-    margin-left: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-  }
-
-  h3 .child-badge-cached {
-    background: var(--success);
-    color: #000;
-  }
-
-  h3 .child-badge-generated {
-    background: #e8a317;
-    color: #000;
-  }
-
-  h3 .child-badge-external {
-    background: var(--badge-bg);
-    color: var(--badge-fg);
-  }
-
-  h3 .child-badge-skipped {
-    background: #7f1d1d;
-    color: #fff;
-  }
-
-  .child-explain-btn {
-    display: inline-block;
-    margin-left: 8px;
-    padding: 1px 8px;
-    background: var(--primary-bg);
-    color: var(--primary-fg);
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    vertical-align: middle;
-    transition: background 0.15s;
-  }
-
-  .child-explain-btn:hover {
-    background: var(--primary-hover);
   }
 
   .tutorials {

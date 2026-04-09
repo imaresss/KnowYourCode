@@ -8,12 +8,11 @@ import { LastActionRunner, RerunIntent } from "../core/lastAction";
 import { ModelSelectionService } from "../providers/modelSelector";
 import { SelectedModel } from "../core/types";
 import { normalizeExplanationResult } from "../providers/normalizeExplanation";
-import { formatExplanationMarkdown, formatChildExplanationsMarkdown } from "../ui/formatter";
+import { formatExplanationMarkdown } from "../ui/formatter";
 import { sanitizeForDisplay } from "../core/responseParser";
 import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
 import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
-import { explainChildFunctions } from "../core/hierarchicalExplain";
 import { tryReuseFunctionCache } from "../core/cacheReuse";
 
 export function createRunContextActionCommand(
@@ -133,23 +132,6 @@ export function createRunContextActionCommand(
           }, { forceRefresh, signal: activeRequest.controller.signal });
 
           let renderedMarkdown = renderPossiblyJsonExplanation(result.markdown);
-
-          const callees = context.symbolContext?.callees ?? context.enclosingFunction?.callees ?? [];
-          if (callees.length > 0 && actionId === "explainSelectedCode") {
-            const parentName = context.symbolContext?.symbolName
-              ?? context.enclosingFunction?.symbolName
-              ?? context.displayName;
-            const children = await explainChildFunctions(
-              orchestrator,
-              callees,
-              parentName,
-              selection,
-              activeRequest.controller.signal
-            );
-            if (children.length > 0) {
-              renderedMarkdown += "\n\n" + formatChildExplanationsMarkdown(children);
-            }
-          }
 
           const actionTutorials = await getTutorialRecommendations(context.code, context.language, {
             enclosingFunctionCode: context.enclosingFunction?.code

@@ -203,10 +203,6 @@ export function formatHierarchicalExplanationMarkdown(
     sections.push("---");
     sections.push("## Called Functions");
     sections.push(formatChildSummaryList(hierarchical.children));
-
-    for (const child of hierarchical.children) {
-      sections.push(formatChildSection(child));
-    }
   }
 
   return sections.join("\n\n");

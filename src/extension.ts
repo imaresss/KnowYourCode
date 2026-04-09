@@ -39,37 +39,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const updateGeneratingContext = () =>
     vscode.commands.executeCommand("setContext", "knowYourCode.isGenerating", activeRequestManager.hasActive());
 
-  async function navigateAndExplain(filePath: string, symbolName: string): Promise<void> {
-    try {
-      const uri = vscode.Uri.file(filePath);
-      const document = await vscode.workspace.openTextDocument(uri);
-      const symbols = (await vscode.commands.executeCommand<vscode.DocumentSymbol[]>(
-        "vscode.executeDocumentSymbolProvider", uri
-      )) ?? [];
-
-      const flat = flattenDocumentSymbols(symbols);
-      const target = flat.find((s) => s.name === symbolName);
-      if (!target) {
-        void vscode.window.showWarningMessage(`Could not find function "${symbolName}" in ${filePath}`);
-        return;
-      }
-
-      const editor = await vscode.window.showTextDocument(document, {
-        selection: target.selectionRange,
-        viewColumn: vscode.ViewColumn.One
-      });
-      editor.revealRange(target.range, vscode.TextEditorRevealType.InCenter);
-
-      await vscode.commands.executeCommand("knowYourCode.explainFunction");
-    } catch {
-      void vscode.window.showWarningMessage(`Could not navigate to ${symbolName}`);
-    }
-  }
-
-  function flattenDocumentSymbols(symbols: vscode.DocumentSymbol[]): vscode.DocumentSymbol[] {
-    return symbols.flatMap((s) => [s, ...flattenDocumentSymbols(s.children)]);
-  }
-
   panel.onMessage((message) => {
     switch (message.type) {
       case "regenerate":
@@ -106,13 +75,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const stopped = activeRequestManager.stop(payload?.requestId);
         if (stopped) {
           void updateGeneratingContext();
-        }
-        break;
-      }
-      case "explainChild": {
-        const payload = message.payload as { symbolName?: string; filePath?: string } | undefined;
-        if (payload?.symbolName && payload?.filePath) {
-          void navigateAndExplain(payload.filePath, payload.symbolName);
         }
         break;
       }
