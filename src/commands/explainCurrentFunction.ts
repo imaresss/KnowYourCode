@@ -83,8 +83,13 @@ export function createExplainCurrentFunctionCommand(
               ...context.nearbySymbols.map((item) => item.name)
             ]
           });
+          const titleSuffix = meta.cacheHit
+            ? " (cached)"
+            : meta.incremental
+              ? ` (incremental: ${meta.changedLines} lines)`
+              : "";
           panel.show(
-            `KYC: ${context.symbolName}${meta.cacheHit ? " (cached)" : ""}`,
+            `KYC: ${context.symbolName}${titleSuffix}`,
             markdown,
             {
               provider: meta.providerLabel,
@@ -92,7 +97,9 @@ export function createExplainCurrentFunctionCommand(
               cacheHit: meta.cacheHit,
               cacheLabel: meta.cacheLabel,
               references,
-              tutorials
+              tutorials,
+              incremental: meta.incremental,
+              changedLines: meta.changedLines
             }
           );
         } catch (error) {

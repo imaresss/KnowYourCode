@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { AIProvider, ProviderSettings } from "./types";
+import { AIProvider, IncrementalConfig, ProviderSettings } from "./types";
 
 export interface ExtensionConfig {
   activeProvider: AIProvider;
@@ -12,6 +12,7 @@ export interface ExtensionConfig {
   inlineActionsEnabled: boolean;
   selectionDebounceMs: number;
   promptVersion: string;
+  incremental: IncrementalConfig;
 }
 
 const DEFAULT_PROVIDERS: Record<string, { endpoint: string; modelName: string }> = {
@@ -52,7 +53,16 @@ export function getConfig(): ExtensionConfig {
     cacheTtlSeconds: Math.max(0, ws.get<number>("cacheTtlSeconds", 0)),
     inlineActionsEnabled: ws.get<boolean>("inlineActionsEnabled", true),
     selectionDebounceMs: Math.max(0, ws.get<number>("selectionDebounceMs", 250)),
-    promptVersion: "v2"
+    promptVersion: "v2",
+    incremental: {
+      enabled: ws.get<boolean>("incremental.enabled", true),
+      minFunctionLines: Math.max(1, ws.get<number>("incremental.minFunctionLines", 20)),
+      maxChangeRatio: Math.min(1, Math.max(0, ws.get<number>("incremental.maxChangeRatio", 0.3))),
+      maxChangedLines: Math.max(1, ws.get<number>("incremental.maxChangedLines", 25)),
+      maxChangedRegions: Math.max(1, ws.get<number>("incremental.maxChangedRegions", 4)),
+      contextLines: Math.max(1, ws.get<number>("incremental.contextLines", 5)),
+      maxIncrementalDepth: Math.max(1, ws.get<number>("incremental.maxIncrementalDepth", 5))
+    }
   };
 }
 

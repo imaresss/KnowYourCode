@@ -1,4 +1,4 @@
-import { ExplainCallFlowInput, ExplainFunctionInput, ExplainLineInput } from "../core/types";
+import { DiffAnalysis, ExplainCallFlowInput, ExplainFunctionInput, ExplainFunctionResult, ExplainLineInput } from "../core/types";
 
 export function buildExplainFunctionPrompt(input: ExplainFunctionInput): string {
   return [
@@ -109,6 +109,47 @@ export function buildExplainCallFlowPrompt(input: ExplainCallFlowInput): string 
     "",
     "--- FUNCTION CODE ---",
     input.code
+  ].join("\n");
+}
+
+export function buildIncrementalExplainPrompt(
+  input: ExplainFunctionInput,
+  previousResult: ExplainFunctionResult,
+  diff: DiffAnalysis
+): string {
+  const changeDescription = diff.regionCount === 1
+    ? `The developer made a single localized edit (${diff.changedLines} lines changed).`
+    : `The developer made changes in ${diff.regionCount} locations (${diff.changedLines} total lines changed). These changes may be semantically related — consider them together.`;
+
+  return [
+    SYSTEM_PREAMBLE,
+    "",
+    "You previously analyzed this function and produced the explanation below.",
+    changeDescription,
+    "Update the explanation to reflect ALL changes.",
+    "",
+    "RULES:",
+    "- Return the COMPLETE updated JSON object with the same keys as the previous explanation",
+    "- Analyze ALL changed regions before updating — changes in different locations may be causally related",
+    "- Update stepByStep entries for ALL affected lines (use `L<number>:` prefixes for line references based on the new line numbers)",
+    "- If a change affects inputs, outputs, dependencies, or the summary, update those too",
+    "- Keep sections unaffected by ANY change IDENTICAL to the previous explanation",
+    "- If the change is purely cosmetic (formatting, whitespace), note it and keep the explanation unchanged",
+    "",
+    "Return ONLY valid JSON. No markdown fences, no commentary outside the JSON.",
+    "",
+    `--- FUNCTION METADATA ---`,
+    `Function: ${input.symbolName}`,
+    `Language: ${input.language}`,
+    `File: ${input.filePath}`,
+    `Signature: ${input.signature ?? "N/A"}`,
+    `Lines: ${input.range.startLine}-${input.range.endLine}`,
+    "",
+    "--- PREVIOUS EXPLANATION ---",
+    JSON.stringify(previousResult, null, 2),
+    "",
+    "--- WHAT CHANGED (unified diff) ---",
+    diff.unifiedDiff
   ].join("\n");
 }
 

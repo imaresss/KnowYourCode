@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as vscode from "vscode";
 import initSqlJs, { type Database as SqlJsDatabase, type QueryExecResult, type Statement as SqlJsStatement } from "sql.js";
-import { SCHEMA_SQL } from "./schema";
+import { MIGRATION_V2_SQL, SCHEMA_SQL } from "./schema";
 
 type SqlValue = string | number | null;
 
@@ -103,7 +103,22 @@ export async function openDatabase(context: vscode.ExtensionContext): Promise<Da
 
   const wrapped = new Database(db as SqlJsDatabase, dbPath);
   wrapped.exec(SCHEMA_SQL);
+  runMigrations(wrapped);
   return wrapped;
+}
+
+function runMigrations(db: Database): void {
+  for (const statement of MIGRATION_V2_SQL.split(";")) {
+    const trimmed = statement.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      db.exec(trimmed);
+    } catch {
+      // Column already exists — expected on already-migrated databases
+    }
+  }
 }
 
 export async function createInMemoryDatabase(): Promise<Database> {

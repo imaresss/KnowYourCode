@@ -280,6 +280,48 @@
           "type": "boolean",
           "default": true,
           "description": "Show context-aware KYC inline actions using CodeLens near the current selection or enclosing function."
+        },
+        "knowYourCode.incremental.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable incremental explanations: when a small edit is made to a large function, only send the diff to the AI model instead of the full code. Saves tokens and reduces latency."
+        },
+        "knowYourCode.incremental.minFunctionLines": {
+          "type": "number",
+          "default": 20,
+          "minimum": 1,
+          "description": "Minimum function size (in lines) for incremental explain to activate. Functions smaller than this always use the full explain path."
+        },
+        "knowYourCode.incremental.maxChangeRatio": {
+          "type": "number",
+          "default": 0.3,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Maximum ratio of changed lines to total lines for incremental explain. Edits changing more than this fraction of the function fall back to full explain. Scales up for larger functions."
+        },
+        "knowYourCode.incremental.maxChangedLines": {
+          "type": "number",
+          "default": 25,
+          "minimum": 1,
+          "description": "Absolute maximum number of changed lines for incremental explain."
+        },
+        "knowYourCode.incremental.maxChangedRegions": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "description": "Maximum number of disjoint changed regions in the function. Scattered changes beyond this limit fall back to full explain. Scales up for larger functions."
+        },
+        "knowYourCode.incremental.contextLines": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Number of surrounding context lines to include around each change in the diff sent to the AI model."
+        },
+        "knowYourCode.incremental.maxIncrementalDepth": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "Maximum number of consecutive incremental updates before forcing a full re-explain. Prevents quality drift from accumulated incremental updates."
         }
       }
     }

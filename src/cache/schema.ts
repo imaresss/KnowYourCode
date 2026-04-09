@@ -1,3 +1,8 @@
+export const MIGRATION_V2_SQL = `
+ALTER TABLE explanations ADD COLUMN source_code TEXT;
+ALTER TABLE explanations ADD COLUMN incremental_depth INTEGER DEFAULT 0;
+`;
+
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS explanations (
   symbol_key TEXT NOT NULL,
@@ -9,6 +14,8 @@ CREATE TABLE IF NOT EXISTS explanations (
   prompt_version TEXT NOT NULL,
   content_json TEXT NOT NULL,
   created_at TEXT NOT NULL,
+  source_code TEXT,
+  incremental_depth INTEGER DEFAULT 0,
   PRIMARY KEY (symbol_key, explanation_type, model_name, provider_mode, prompt_version)
 );
 

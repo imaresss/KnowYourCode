@@ -20,7 +20,7 @@ export class ExplanationRepository {
     const row = this.db
       .prepare(
         `SELECT symbol_key, explanation_type, content_hash, dependency_hash, model_name,
-                provider_mode, prompt_version, content_json, created_at
+                provider_mode, prompt_version, content_json, created_at, source_code, incremental_depth
          FROM explanations
          WHERE symbol_key = ?
            AND content_hash = ?
@@ -36,35 +36,13 @@ export class ExplanationRepository {
         params.modelName,
         params.provider,
         params.promptVersion
-      ) as
-      | {
-          symbol_key: string;
-          explanation_type: string;
-          content_hash: string;
-          dependency_hash: string;
-          model_name: string;
-          provider_mode: string;
-          prompt_version: string;
-          content_json: string;
-          created_at: string;
-        }
-      | undefined;
+      ) as Record<string, string | number | null> | undefined;
 
     if (!row) {
       return undefined;
     }
 
-    const record: StoredExplanation = {
-      symbolKey: row.symbol_key,
-      explanationType: row.explanation_type as ExplanationAction,
-      contentHash: row.content_hash,
-      dependencyHash: row.dependency_hash,
-      modelName: row.model_name,
-      provider: row.provider_mode as StoredExplanation["provider"],
-      promptVersion: row.prompt_version,
-      result: JSON.parse(row.content_json),
-      createdAt: row.created_at
-    };
+    const record = this.mapRowToRecord(row);
 
     if (this.isExpired(record.createdAt, ttlMs)) {
       this.deleteLookup(params);
@@ -81,8 +59,8 @@ export class ExplanationRepository {
       .prepare(
         `INSERT OR REPLACE INTO explanations (
            symbol_key, explanation_type, content_hash, dependency_hash, model_name,
-           provider_mode, prompt_version, content_json, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           provider_mode, prompt_version, content_json, created_at, source_code, incremental_depth
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         explanation.symbolKey,
@@ -93,8 +71,28 @@ export class ExplanationRepository {
         explanation.provider,
         explanation.promptVersion,
         JSON.stringify(explanation.result),
-        explanation.createdAt
+        explanation.createdAt,
+        explanation.sourceCode ?? null,
+        explanation.incrementalDepth ?? 0
       );
+  }
+
+  public findLatestBySymbolKey(symbolKey: string): StoredExplanation | undefined {
+    const row = this.db
+      .prepare(
+        `SELECT symbol_key, explanation_type, content_hash, dependency_hash, model_name,
+                provider_mode, prompt_version, content_json, created_at, source_code, incremental_depth
+         FROM explanations
+         WHERE symbol_key = ?
+         ORDER BY created_at DESC
+         LIMIT 1`
+      )
+      .get(symbolKey) as Record<string, string | number | null> | undefined;
+
+    if (!row) {
+      return undefined;
+    }
+    return this.mapRowToRecord(row);
   }
 
   public invalidateSymbol(symbolKey: string): void {
@@ -166,6 +164,22 @@ export class ExplanationRepository {
       total += row.cnt;
     }
     return { totalEntries: total, providers };
+  }
+
+  private mapRowToRecord(row: Record<string, string | number | null>): StoredExplanation {
+    return {
+      symbolKey: row.symbol_key as string,
+      explanationType: row.explanation_type as ExplanationAction,
+      contentHash: row.content_hash as string,
+      dependencyHash: row.dependency_hash as string,
+      modelName: row.model_name as string,
+      provider: row.provider_mode as StoredExplanation["provider"],
+      promptVersion: row.prompt_version as string,
+      result: JSON.parse(row.content_json as string),
+      createdAt: row.created_at as string,
+      sourceCode: (row.source_code as string) ?? undefined,
+      incrementalDepth: typeof row.incremental_depth === "number" ? row.incremental_depth : 0
+    };
   }
 
   private buildLookupKey(params: ExplanationLookup | StoredExplanation): string {

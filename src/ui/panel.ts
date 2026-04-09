@@ -9,6 +9,8 @@ export interface PanelShowOptions {
   modelName?: string;
   references?: CodeReferenceMapEntry[];
   tutorials?: TutorialRecommendation[];
+  incremental?: boolean;
+  changedLines?: number;
 }
 
 type MessageHandler = (message: { type: string; payload?: unknown }) => void;
@@ -125,6 +127,9 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   const provider = options.provider ?? "unknown";
   const cacheLabel = options.cacheLabel ?? (options.cacheHit ? "Cached" : "Generated");
   const modelName = options.modelName ?? provider;
+  const incrementalBadge = options.incremental
+    ? `<span class="cache-badge incremental-badge" title="Only ${options.changedLines ?? "a few"} changed lines were sent to the model">⚡ Incremental (${options.changedLines ?? "?"} lines)</span>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -139,6 +144,7 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       <span class="provider-badge">${escapeHtml(provider)}</span>
       <span class="model-badge">${escapeHtml(modelName)}</span>
       <span class="cache-badge ${options.cacheHit ? "cache-hit" : "cache-miss"}">${cacheLabel}</span>
+      ${incrementalBadge}
     </div>
     <div class="toolbar-right">
       <button class="btn" id="copyBtn" title="Copy explanation to clipboard">
@@ -329,6 +335,12 @@ const CSS = `
   .cache-miss {
     background: var(--badge-bg);
     color: var(--badge-fg);
+  }
+
+  .incremental-badge {
+    background: #e8a317;
+    color: #000;
+    font-weight: 600;
   }
 
   .btn {

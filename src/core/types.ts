@@ -114,6 +114,8 @@ export interface StoredExplanation {
   promptVersion: string;
   result: ExplainFunctionResult | ExplainLineResult | ExplainCallFlowResult | GenericMarkdownResult;
   createdAt: string;
+  sourceCode?: string;
+  incrementalDepth?: number;
 }
 
 export interface ExplanationLookup {
@@ -132,6 +134,9 @@ export interface ExplanationPresentation {
   provider: AIProvider;
   providerLabel: string;
   createdAt?: string;
+  incremental?: boolean;
+  incrementalDepth?: number;
+  changedLines?: number;
 }
 
 export interface ExplanationResponse<T> {
@@ -193,4 +198,32 @@ export interface StreamCallbacks {
   onChunk: (text: string) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+}
+
+export interface ChangedRegion {
+  oldStartLine: number;
+  newStartLine: number;
+  linesRemoved: number;
+  linesAdded: number;
+}
+
+export interface DiffAnalysis {
+  totalLines: number;
+  changedLines: number;
+  addedLines: number;
+  removedLines: number;
+  changeRatio: number;
+  regionCount: number;
+  regions: ChangedRegion[];
+  unifiedDiff: string;
+}
+
+export interface IncrementalConfig {
+  enabled: boolean;
+  minFunctionLines: number;
+  maxChangeRatio: number;
+  maxChangedLines: number;
+  maxChangedRegions: number;
+  contextLines: number;
+  maxIncrementalDepth: number;
 }

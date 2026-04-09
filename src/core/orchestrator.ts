@@ -23,10 +23,12 @@ import {
 } from "./types";
 import { buildSymbolKey } from "../intelligence/fingerprint";
 import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
+import { analyzeDiff, isIncrementalCandidate } from "../intelligence/diffAnalysis";
 import { resolveConnectedSymbolContexts } from "../intelligence/symbolResolver";
-import { buildExplainCallFlowPrompt, buildExplainLinePrompt } from "../providers/promptBuilder";
+import { buildExplainCallFlowPrompt, buildExplainLinePrompt, buildIncrementalExplainPrompt } from "../providers/promptBuilder";
 import { createProviderForSelection, PROVIDER_DISPLAY_NAMES } from "../providers/providerFactory";
 import { parseJsonObjectFromModelText } from "../providers/normalizeExplanation";
+import { logInfo } from "../utils/logger";
 
 export class ExplanationOrchestrator {
   private config: ExtensionConfig;
@@ -69,6 +71,31 @@ export class ExplanationOrchestrator {
       };
     }
 
+    const incrementalConfig = this.config.incremental;
+    if (incrementalConfig.enabled && !options.forceRefresh) {
+      const previous = this.repo.findLatestBySymbolKey(symbolKey);
+      if (
+        previous &&
+        previous.sourceCode &&
+        previous.explanationType === "explainFunction" &&
+        previous.sourceCode !== input.code &&
+        (previous.incrementalDepth ?? 0) < incrementalConfig.maxIncrementalDepth
+      ) {
+        const prevCode = previous.sourceCode;
+        const lineCount = input.code.split("\n").length;
+        if (lineCount >= incrementalConfig.minFunctionLines) {
+          const diff = analyzeDiff(prevCode, input.code, incrementalConfig.contextLines);
+          if (isIncrementalCandidate(diff, incrementalConfig)) {
+            logInfo(`Incremental explain for ${input.symbolName}: ${diff.changedLines} lines changed across ${diff.regionCount} region(s)`);
+            const prev = previous;
+            return this.withInFlightDedup(lookup, () =>
+              this.runIncrementalExplain(input, selection, prev, diff, lookup)
+            );
+          }
+        }
+      }
+    }
+
     return this.withInFlightDedup(lookup, async () => {
       const provider = createProviderForSelection(selection);
       const result = await provider.explainFunction(input);
@@ -78,6 +105,8 @@ export class ExplanationOrchestrator {
         ...lookup,
         explanationType: "explainFunction",
         result,
+        sourceCode: input.code,
+        incrementalDepth: 0,
         createdAt: new Date().toISOString()
       };
       this.repo.save(record);
@@ -86,6 +115,42 @@ export class ExplanationOrchestrator {
         meta: this.buildPresentation(false, record)
       };
     });
+  }
+
+  private async runIncrementalExplain(
+    input: ExplainFunctionInput,
+    selection: SelectedModel,
+    previous: StoredExplanation,
+    diff: import("./types").DiffAnalysis,
+    lookup: ExplanationLookup
+  ): Promise<ExplanationResponse<ExplainFunctionResult>> {
+    const previousResult = previous.result as ExplainFunctionResult;
+    const prompt = buildIncrementalExplainPrompt(input, previousResult, diff);
+    const raw = await this.callProviderRaw(selection, prompt);
+    const result = parseIncrementalResult(raw, previousResult);
+    const newDepth = (previous.incrementalDepth ?? 0) + 1;
+
+    this.repo.replaceCallEdges(lookup.symbolKey, input.callees);
+
+    const record: StoredExplanation = {
+      ...lookup,
+      explanationType: "explainFunction",
+      result,
+      sourceCode: input.code,
+      incrementalDepth: newDepth,
+      createdAt: new Date().toISOString()
+    };
+    this.repo.save(record);
+
+    return {
+      result,
+      meta: {
+        ...this.buildPresentation(false, record),
+        incremental: true,
+        incrementalDepth: newDepth,
+        changedLines: diff.changedLines
+      }
+    };
   }
 
   public async explainLine(
@@ -343,6 +408,25 @@ export class ExplanationOrchestrator {
     }
     return loader();
   }
+}
+
+function parseIncrementalResult(raw: string, fallback: ExplainFunctionResult): ExplainFunctionResult {
+  const cleaned = raw.replace(/^```json\s*/i, "").replace(/```\s*$/, "").trim();
+  const parsed = parseJsonObjectFromModelText<Record<string, unknown>>(cleaned);
+  if (parsed) {
+    return {
+      summary: String(parsed.summary ?? fallback.summary),
+      purpose: String(parsed.purpose ?? fallback.purpose),
+      stepByStep: Array.isArray(parsed.stepByStep) ? parsed.stepByStep.map(String) : fallback.stepByStep,
+      inputs: Array.isArray(parsed.inputs) ? parsed.inputs.map(String) : fallback.inputs,
+      outputs: Array.isArray(parsed.outputs) ? parsed.outputs.map(String) : fallback.outputs,
+      dependencies: Array.isArray(parsed.dependencies) ? parsed.dependencies.map(String) : fallback.dependencies,
+      risks: Array.isArray(parsed.risks) ? parsed.risks.map(String) : (fallback.risks ?? []),
+      connectedFlow: Array.isArray(parsed.connectedFlow) ? parsed.connectedFlow.map(String) : (fallback.connectedFlow ?? []),
+      confidence: typeof parsed.confidence === "number" ? parsed.confidence : (fallback.confidence ?? 0)
+    };
+  }
+  return fallback;
 }
 
 function parseLineResult(raw: string): ExplainLineResult {
