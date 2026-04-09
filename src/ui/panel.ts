@@ -181,6 +181,9 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       <button class="btn" id="switchBtn" title="Switch AI model">
         <span class="btn-icon">🔀</span> Switch Model
       </button>
+      <button class="btn" id="stopSpeechBtn" title="Stop speech playback" disabled>
+        <span class="btn-icon">⏹</span> Stop
+      </button>
     </div>
   </div>
   <div class="content" id="content">
@@ -190,7 +193,11 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
   <script>
     const vscode = acquireVsCodeApi();
     const content = document.getElementById('content');
+    const stopSpeechBtn = document.getElementById('stopSpeechBtn');
     const referenceLookup = ${referenceLookupJson};
+    const tts = createTtsController(content, stopSpeechBtn);
+
+    enhanceSectionSpeechControls(content, tts);
 
     document.getElementById('copyBtn').addEventListener('click', () => {
       vscode.postMessage({ type: 'copy', payload: content.innerText });
@@ -202,6 +209,21 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
 
     document.getElementById('switchBtn').addEventListener('click', () => {
       vscode.postMessage({ type: 'switchProvider' });
+    });
+
+    stopSpeechBtn.addEventListener('click', () => {
+      tts.stop();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      tts.destroy();
+    });
+
+    window.addEventListener('keydown', (event) => {
+      if (event.altKey && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        tts.stop();
+      }
     });
 
     window.addEventListener('click', (event) => {
@@ -243,6 +265,234 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
       }
       const lineNumber = Number(match[1]);
       return Number.isFinite(lineNumber) && lineNumber > 0 ? lineNumber : undefined;
+    }
+
+    function enhanceSectionSpeechControls(root, ttsController) {
+      if (!root) {
+        return;
+      }
+      const headings = Array.from(root.querySelectorAll('h2.section-title'));
+      headings.forEach((heading, index) => {
+        const sectionId = 'tts-section-' + index;
+        const title = heading.textContent ? heading.textContent.trim() : 'section';
+        if (title.toLowerCase() === 'call graph') {
+          return;
+        }
+        const speechTarget = collectSectionSpeechTarget(heading);
+        const text = getReadableText(speechTarget);
+        heading.dataset.ttsSectionId = sectionId;
+        speechTarget.forEach((node) => {
+          if (node instanceof HTMLElement) {
+            node.dataset.ttsParentSectionId = sectionId;
+          }
+        });
+
+        const button = document.createElement('button');
+        button.className = 'section-speech-btn';
+        button.type = 'button';
+        button.title = text
+          ? 'Listen to ' + title + ' (click again to pause)'
+          : 'No readable content in this section';
+        button.setAttribute('aria-label', 'Listen to ' + title);
+        button.dataset.ttsSectionId = sectionId;
+        button.textContent = '🔊';
+        button.disabled = !text || !ttsController.isSupported();
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          ttsController.toggle(sectionId, text);
+        });
+        heading.appendChild(button);
+      });
+
+      if (!ttsController.isSupported()) {
+        const note = document.createElement('p');
+        note.className = 'tts-status tts-status-warning';
+        note.textContent = 'Text-to-speech is not available in this webview.';
+        root.prepend(note);
+      }
+    }
+
+    function collectSectionSpeechTarget(heading) {
+      const nodes = [];
+      let cursor = heading.nextElementSibling;
+      while (cursor && !isPeerSectionBoundary(cursor)) {
+        nodes.push(cursor);
+        cursor = cursor.nextElementSibling;
+      }
+      return nodes;
+    }
+
+    function isPeerSectionBoundary(element) {
+      return element.matches('h2.section-title, hr');
+    }
+
+    function getReadableText(nodes) {
+      return nodes
+        .map((node) => node instanceof HTMLElement ? node.innerText : '')
+        .join('\\n')
+        .replace(/\\s+/g, ' ')
+        .trim();
+    }
+
+    function createTtsController(root, stopButton) {
+      const synth = window.speechSynthesis;
+      const supported = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+      let currentUtterance = null;
+      let currentSectionId = null;
+      let currentChunks = [];
+      let currentChunkIndex = 0;
+      let lastClickAt = 0;
+
+      function isSupported() {
+        return supported;
+      }
+
+      function toggle(sectionId, text) {
+        if (!supported || !text) {
+          return;
+        }
+
+        const now = Date.now();
+        if (now - lastClickAt < 200) {
+          return;
+        }
+        lastClickAt = now;
+
+        if (currentSectionId === sectionId && synth.paused) {
+          synth.resume();
+          updatePlaybackUi(sectionId, 'speaking');
+          return;
+        }
+
+        if (currentSectionId === sectionId && synth.speaking) {
+          synth.pause();
+          updatePlaybackUi(sectionId, 'paused');
+          return;
+        }
+
+        speak(sectionId, text);
+      }
+
+      function speak(sectionId, text) {
+        stop();
+        currentSectionId = sectionId;
+        currentChunks = chunkSpeechText(text);
+        currentChunkIndex = 0;
+        updatePlaybackUi(sectionId, 'speaking');
+        speakCurrentChunk();
+      }
+
+      function speakCurrentChunk() {
+        if (!supported || !currentSectionId || currentChunkIndex >= currentChunks.length) {
+          stop();
+          return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(currentChunks[currentChunkIndex]);
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.lang = document.documentElement.lang || 'en-US';
+        utterance.onend = () => {
+          if (utterance !== currentUtterance || !currentSectionId) {
+            return;
+          }
+          currentChunkIndex += 1;
+          speakCurrentChunk();
+        };
+        utterance.onerror = () => {
+          stop();
+        };
+        currentUtterance = utterance;
+        synth.speak(utterance);
+      }
+
+      function stop() {
+        const previousSectionId = currentSectionId;
+        currentUtterance = null;
+        currentSectionId = null;
+        currentChunks = [];
+        currentChunkIndex = 0;
+        if (supported) {
+          synth.cancel();
+        }
+        if (previousSectionId) {
+          updatePlaybackUi(previousSectionId, 'idle');
+        }
+        updateStopButton(false);
+      }
+
+      function destroy() {
+        stop();
+      }
+
+      function updatePlaybackUi(sectionId, state) {
+        updateStopButton(state !== 'idle');
+        root.querySelectorAll('.tts-speaking, .tts-paused').forEach((element) => {
+          element.classList.remove('tts-speaking', 'tts-paused');
+        });
+        root.querySelectorAll('.section-speech-btn').forEach((button) => {
+          button.classList.remove('is-speaking', 'is-paused');
+          button.textContent = '🔊';
+          button.setAttribute('aria-pressed', 'false');
+        });
+
+        if (state === 'idle') {
+          return;
+        }
+
+        const heading = root.querySelector('[data-tts-section-id="' + sectionId + '"].section-title');
+        const button = root.querySelector('.section-speech-btn[data-tts-section-id="' + sectionId + '"]');
+        const sectionNodes = root.querySelectorAll('[data-tts-parent-section-id="' + sectionId + '"]');
+        if (heading) {
+          heading.classList.add(state === 'paused' ? 'tts-paused' : 'tts-speaking');
+        }
+        sectionNodes.forEach((element) => {
+          element.classList.add(state === 'paused' ? 'tts-paused' : 'tts-speaking');
+        });
+        if (button) {
+          button.classList.add(state === 'paused' ? 'is-paused' : 'is-speaking');
+          button.textContent = state === 'paused' ? '▶' : '⏸';
+          button.setAttribute('aria-pressed', 'true');
+        }
+      }
+
+      function updateStopButton(enabled) {
+        if (!stopButton) {
+          return;
+        }
+        stopButton.disabled = !enabled;
+      }
+
+      return { destroy, isSupported, stop, toggle };
+    }
+
+    function chunkSpeechText(text) {
+      const maxLength = 3500;
+      const sentences = text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [text];
+      const chunks = [];
+      let chunk = '';
+      sentences.forEach((sentence) => {
+        const trimmed = sentence.trim();
+        if (!trimmed) {
+          return;
+        }
+        if ((chunk + ' ' + trimmed).trim().length > maxLength && chunk) {
+          chunks.push(chunk.trim());
+          chunk = '';
+        }
+        if (trimmed.length > maxLength) {
+          for (let i = 0; i < trimmed.length; i += maxLength) {
+            chunks.push(trimmed.slice(i, i + maxLength));
+          }
+        } else {
+          chunk = (chunk + ' ' + trimmed).trim();
+        }
+      });
+      if (chunk) {
+        chunks.push(chunk);
+      }
+      return chunks;
     }
 
   </script>
@@ -502,6 +752,62 @@ const CSS = `
     font-size: 1em;
     font-weight: 600;
     margin: 20px 0 8px;
+    color: var(--warning);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-speech-btn {
+    background: transparent;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    min-width: 28px;
+    height: 24px;
+    padding: 0 6px;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .section-speech-btn:hover:not([disabled]),
+  .section-speech-btn.is-speaking,
+  .section-speech-btn.is-paused {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .section-speech-btn[disabled] {
+    cursor: not-allowed;
+    opacity: 0.35;
+  }
+
+  .tts-speaking {
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .tts-paused {
+    background: color-mix(in srgb, var(--warning) 8%, transparent);
+    outline: 1px dashed color-mix(in srgb, var(--warning) 35%, transparent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .tts-status {
+    margin: 0 0 12px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  .tts-status-warning {
     color: var(--warning);
   }
 
