@@ -10,6 +10,8 @@ export const PROVIDER_DISPLAY_NAMES: Record<AIProvider, string> = {
 export const ALL_PROVIDERS: AIProvider[] = ["openai", "claude", "gemini", "local"];
 
 const OPENAI_MODELS = [
+  "gpt-5-mini",
+  "gpt-5",
   "gpt-4.1",
   "gpt-4.1-mini",
   "gpt-4.1-nano",

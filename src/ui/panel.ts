@@ -658,7 +658,16 @@ function buildStoppedHtml(title: string, provider: string, modelName?: string): 
     <p class="stopped-icon">⛔</p>
     <p class="loading-text">${escapeHtml(title)}</p>
     <p class="loading-subtext">Generation stopped by user</p>
+    <button class="btn btn-primary stopped-regenerate-btn" id="regenerateBtn" title="Regenerate this explanation">
+      <span class="btn-icon">🔄</span> Regenerate
+    </button>
   </div>
+  <script>
+    const vscode = acquireVsCodeApi();
+    document.getElementById('regenerateBtn').addEventListener('click', () => {
+      vscode.postMessage({ type: 'regenerate' });
+    });
+  </script>
 </body>
 </html>`;
 }
@@ -994,6 +1003,11 @@ const CSS = `
   .stopped-icon {
     font-size: 32px;
     line-height: 1;
+  }
+
+  .stopped-regenerate-btn {
+    margin-top: 16px;
+    display: inline-flex;
   }
 
   .tutorials {
