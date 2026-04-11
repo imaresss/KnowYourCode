@@ -13,6 +13,7 @@ export interface ExtensionConfig {
   selectionDebounceMs: number;
   promptVersion: string;
   incremental: IncrementalConfig;
+  cursorHandoff: boolean;
 }
 
 const DEFAULT_PROVIDERS: Record<string, { endpoint: string; modelName: string }> = {
@@ -54,6 +55,7 @@ export function getConfig(): ExtensionConfig {
     inlineActionsEnabled: ws.get<boolean>("inlineActionsEnabled", true),
     selectionDebounceMs: Math.max(0, ws.get<number>("selectionDebounceMs", 250)),
     promptVersion: "v2",
+    cursorHandoff: ws.get<boolean>("cursorHandoff", true),
     incremental: {
       enabled: ws.get<boolean>("incremental.enabled", true),
       minFunctionLines: Math.max(1, ws.get<number>("incremental.minFunctionLines", 20)),

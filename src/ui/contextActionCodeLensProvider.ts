@@ -17,7 +17,8 @@ export class ContextActionCodeLensProvider implements vscode.CodeLensProvider {
       return [];
     }
 
-    if (!this.getConfig().inlineActionsEnabled) {
+    const config = this.getConfig();
+    if (!config.inlineActionsEnabled) {
       return [];
     }
 
@@ -26,7 +27,7 @@ export class ContextActionCodeLensProvider implements vscode.CodeLensProvider {
         return [];
       }
 
-      const actions = getAvailableActions(context);
+      const actions = getAvailableActions(context, config.cursorHandoff);
       if (!actions.length) {
         return [];
       }

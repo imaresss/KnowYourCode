@@ -33,6 +33,23 @@ export function createExplainCurrentLineCommand(
       return;
     }
 
+    const { isCursorHandoffEnabled } = await import("../cursor/handoff");
+    if (isCursorHandoffEnabled()) {
+      const { handoffToCursorChat } = await import("../cursor/handoff");
+      const { buildCursorExplainLinePrompt } = await import("../cursor/promptAssembler");
+      const ctx = await resolveCurrentSymbolContext(editor);
+      const prompt = buildCursorExplainLinePrompt(
+        editor.document.uri.fsPath,
+        editor.document.languageId,
+        lineText,
+        lineNumber,
+        ctx?.symbolName ?? "file scope",
+        ctx?.code ?? editor.document.getText()
+      );
+      await handoffToCursorChat(prompt, `Explain line ${lineNumber}`);
+      return;
+    }
+
     const context = await resolveCurrentSymbolContext(editor);
     const enclosingCode = context?.code ?? editor.document.getText();
     const enclosingName = context?.symbolName ?? "file scope";

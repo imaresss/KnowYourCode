@@ -38,6 +38,15 @@ export function createRunContextActionCommand(
       return;
     }
 
+    const { isCursorHandoffEnabled } = await import("../cursor/handoff");
+    if (isCursorHandoffEnabled()) {
+      const { handoffToCursorChat } = await import("../cursor/handoff");
+      const { buildCursorContextActionPrompt } = await import("../cursor/promptAssembler");
+      const cursorPrompt = buildCursorContextActionPrompt(actionId, context);
+      await handoffToCursorChat(cursorPrompt, actionLabel(actionId));
+      return;
+    }
+
     const prompt = buildContextActionPrompt(actionId, context);
     const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
