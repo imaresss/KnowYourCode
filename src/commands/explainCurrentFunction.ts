@@ -33,6 +33,15 @@ export function createExplainCurrentFunctionCommand(
       return;
     }
 
+    const { isCursorHandoffEnabled } = await import("../cursor/handoff");
+    if (isCursorHandoffEnabled()) {
+      const { handoffToCursorChat } = await import("../cursor/handoff");
+      const { buildCursorExplainFunctionPrompt } = await import("../cursor/promptAssembler");
+      const prompt = buildCursorExplainFunctionPrompt(context);
+      await handoffToCursorChat(prompt, `Explain ${context.symbolName}`);
+      return;
+    }
+
     const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
       placeHolder: `Choose a model to explain ${context.symbolName}`

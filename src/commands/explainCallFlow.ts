@@ -33,6 +33,15 @@ export function createExplainCallFlowCommand(
       return;
     }
 
+    const { isCursorHandoffEnabled } = await import("../cursor/handoff");
+    if (isCursorHandoffEnabled()) {
+      const { handoffToCursorChat } = await import("../cursor/handoff");
+      const { buildCursorExplainCallFlowPrompt } = await import("../cursor/promptAssembler");
+      const prompt = buildCursorExplainCallFlowPrompt(context);
+      await handoffToCursorChat(prompt, `Call Flow — ${context.symbolName}`);
+      return;
+    }
+
     const input: ExplainCallFlowInput = {
       workspaceRoot: context.workspaceRoot,
       filePath: context.filePath,

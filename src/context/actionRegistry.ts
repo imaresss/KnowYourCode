@@ -15,7 +15,7 @@ export interface ContextActionDefinition {
   description: string;
 }
 
-export function getAvailableActions(context: KycInteractionContext): ContextActionDefinition[] {
+export function getAvailableActions(context: KycInteractionContext, cursorHandoff = false): ContextActionDefinition[] {
   if (context.mode === "selection") {
     const genericSelectionActions: ContextActionDefinition[] = [
       createGenericAction("explainSelectedCode", "Explain Selected Code", "Explain exactly the selected code."),
@@ -41,7 +41,6 @@ export function getAvailableActions(context: KycInteractionContext): ContextActi
           command: "knowYourCode.showConnectedCalls",
           description: "Show callers, callees, and dependencies."
         },
-        createGenericAction("optimizeFunction", "Optimize Function", "Suggest optimizations for this function."),
         ...genericSelectionActions
       ];
     }
@@ -49,14 +48,23 @@ export function getAvailableActions(context: KycInteractionContext): ContextActi
     return genericSelectionActions;
   }
 
-  return [
+  // Cursor mode — always show Explain Function
+  const cursorActions: ContextActionDefinition[] = [
     {
       id: "explainFunction",
       title: "Explain Function",
       command: "knowYourCode.explainFunction",
       description: "Explain the current function."
+    },
+    {
+      id: "explainCallFlow",
+      title: "Explain Call Flow",
+      command: "knowYourCode.explainCallFlow",
+      description: "Trace the function call flow."
     }
   ];
+
+  return cursorActions;
 }
 
 function createGenericAction(id: KycActionId, title: string, description: string): ContextActionDefinition {
