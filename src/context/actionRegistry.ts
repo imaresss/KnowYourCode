@@ -41,7 +41,6 @@ export function getAvailableActions(context: KycInteractionContext, cursorHandof
           command: "knowYourCode.showConnectedCalls",
           description: "Show callers, callees, and dependencies."
         },
-        createGenericAction("optimizeFunction", "Optimize Function", "Suggest optimizations for this function."),
         ...genericSelectionActions
       ];
     }
@@ -64,11 +63,6 @@ export function getAvailableActions(context: KycInteractionContext, cursorHandof
       description: "Trace the function call flow."
     }
   ];
-
-  if (cursorHandoff) {
-    cursorActions.push(createGenericAction("findIssues", "Find Issues", "Find bugs and improvements in this function."));
-    cursorActions.push(createGenericAction("optimizeFunction", "Optimize Function", "Suggest optimizations for this function."));
-  }
 
   return cursorActions;
 }

@@ -38,15 +38,5 @@ export function buildCursorContextActionPrompt(
   const symbol = context.symbolContext?.symbolName;
   const ref = symbol ? `\`${symbol}\` in \`${file}\`` : `selected code in \`${file}\``;
 
-  switch (actionId) {
-    case "findIssues":
-      return `/kyc-find-issues ${ref}`;
-    case "optimizeFunction":
-      return `/kyc-optimize ${ref}`;
-    case "explainSelectedCode":
-    case "explainLineByLine":
-    case "summarizeSelection":
-    default:
-      return `/kyc-explain-selected ${ref}`;
-  }
+  return `/kyc-explain-selected ${ref}`;
 }
