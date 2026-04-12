@@ -5,8 +5,6 @@
 
 ![KYC Demo](media/kyc-demo-mockup.png)
 
-![How it works](media/kyc-how-it-works.png)
-
 ---
 
 ## How it works
