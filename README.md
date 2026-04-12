@@ -3,7 +3,11 @@
 > **Zero-config AI code understanding, native to Cursor.**  
 > Click a lens. Get the answer in Cursor Chat. No panel, no setup, no API key required.
 
-![KYC Demo](media/kyc-demo-mockup.png)
+### See it in action
+
+![KYC — code lens actions hand off to Cursor Chat](media/KycVideo.gif)
+
+*Above: **Explain Function**, **Explain Call Flow**, and **Explain Selected Code** appear as code lens links above your code. Click one to open Cursor Chat with a skill-tuned explanation.*
 
 ---
 
