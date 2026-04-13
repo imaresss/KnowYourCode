@@ -2,7 +2,7 @@
   "name": "know-your-code",
   "displayName": "KYC — Know Your Code",
   "description": "Understand code deeply with AI-powered explanations, smart caching, and multi-provider support (OpenAI, Claude, Gemini).",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "publisher": "codevibeit",
   "repository": {
     "type": "git",
