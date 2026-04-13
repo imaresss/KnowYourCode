@@ -81,12 +81,31 @@ Trivial operations are always skipped (getters, basic arithmetic, logging, plain
 
 ## Installation
 
-### From the Marketplace
+### Install in Cursor (recommended)
 
-Search **"KYC Know Your Code"** in the Cursor/VS Code Extensions panel, or install directly:
+KYC is available in **Cursor** from the Extensions marketplace, the same place you install other editor extensions.
 
+1. Open **Cursor**.
+2. Open the **Extensions** view: `Cmd+Shift+X` (macOS) or `Ctrl+Shift+X` (Windows/Linux), or click the Extensions icon in the activity bar.
+3. In the search box, type **`codevibeit`** — that is the publisher ID. You should see **KYC — Know Your Code** (`codevibeit.know-your-code`).
+4. Click **Install**.
+
+You can also search by the display name **Know Your Code** or **KYC** if you prefer; using **`codevibeit`** is the quickest way to find this publisher’s listing.
+
+**From the command palette:** `Extensions: Install Extensions…`, then search for `codevibeit`.
+
+**From a terminal** (if you use the VS Code–compatible CLI that Cursor provides):
+
+```bash
+code --install-extension codevibeit.know-your-code
 ```
-ext install codevibeit.know-your-code
+
+### Install in VS Code
+
+The extension is also on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=codevibeit.know-your-code). In VS Code, open Extensions and search for **`codevibeit`** or **KYC — Know Your Code**, or run:
+
+```bash
+code --install-extension codevibeit.know-your-code
 ```
 
 ### Install the Cursor Skills
@@ -110,13 +129,15 @@ Then copy the three `SKILL.md` files from the [skills folder](https://github.com
 
 ### Code lens actions
 
-Three actions appear above every function definition:
+Above each function you’ll see muted inline links (VS Code **CodeLens**), for example:
 
 ```
-⚡ Explain Function  |  🔀 Explain Call Flow  |  🔍 Explain Selected
+Explain Function | Explain Call Flow
 ```
 
-Click any of them. KYC assembles the right skill trigger and hands it to Cursor Chat.
+When you select a line or range, you may also see **Explain Selected Code** on that line.
+
+Click any of them. KYC assembles the right skill trigger and hands it off to Cursor Chat.
 
 ### Keyboard shortcuts
 
