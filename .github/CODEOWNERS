@@ -1,0 +1,5 @@
+# Default reviewers for all pull requests.
+# Replace @imaresss with your GitHub username if different.
+# Enable "Require review from Code Owners" on `main` in repo Settings → Branches
+# so merges need your approval (combine with "Restrict who can push" for strongest lock).
+* @imaresss

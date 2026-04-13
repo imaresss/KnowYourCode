@@ -21,8 +21,10 @@ import { logInfo } from "./utils/logger";
 import { CodeReferenceNavigator, CodeReferenceOccurrence } from "./core/codeReferences";
 import { TutorialRepository } from "./cache/tutorialRepo";
 import { initTutorialCache } from "./tutorials/recommendations";
+import { installBundledCursorSkills } from "./cursor/installCursorSkills";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  await installBundledCursorSkills(context);
   let config = getConfig();
   const db = await openDatabase(context);
   const repo = new ExplanationRepository(db);
