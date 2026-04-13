@@ -40,20 +40,13 @@ The extension is also on the [Visual Studio Marketplace](https://marketplace.vis
 code --install-extension codevibeit.know-your-code
 ```
 
-### Install the Cursor Skills
+### Cursor Skills (automatic)
 
-KYC works best with the three Cursor Skills installed. Run this in your terminal:
+The three **Cursor Skills** (`kyc-explain-function`, `kyc-explain-callflow`, `kyc-explain-selected`) ship inside the extension. On **first activation** (and on every update), KYC copies them into `~/.cursor/skills/<skill-name>/SKILL.md`. You do **not** need to create folders or copy files by hand.
 
-```bash
-# Create the skills directory
-mkdir -p ~/.cursor/skills/kyc-explain-function
-mkdir -p ~/.cursor/skills/kyc-explain-callflow
-mkdir -p ~/.cursor/skills/kyc-explain-selected
-```
+Cursor loads skills from that directory automatically. If you edit a skill file locally, the next extension update may overwrite it with the bundled version — fork the skill in a new folder if you want a permanent custom copy.
 
-Then copy the three `SKILL.md` files from the [skills folder](https://github.com/imaresss/KnowYourCode/tree/main/skills) into the corresponding directories. Cursor will pick them up automatically — no restart required.
-
-> **Note:** The skills are what make the explanations smart. Without them, KYC still sends the prompt to Cursor Chat, but Cursor won't have the tuned instructions for complexity-adaptive or noise-filtered output.
+> **Note:** The skills are what make the explanations smart (complexity-aware function explain, noise-filtered call flow, deduplicated “selected code” help). The extension still hands prompts to Cursor Chat without them, but quality is best when Cursor picks up these skill files.
 
 ---
 
