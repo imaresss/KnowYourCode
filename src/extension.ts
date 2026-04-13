@@ -96,26 +96,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       })
     ),
     vscode.commands.registerCommand(
-      "knowYourCode.explainLine",
-      createExplainCurrentLineCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
-        lastActionRunner = runner;
-      })
-    ),
-    vscode.commands.registerCommand(
       "knowYourCode.explainCallFlow",
       createExplainCallFlowCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
     ),
     vscode.commands.registerCommand(
-      "knowYourCode.refreshExplanation",
-      createRefreshExplanationCommand(orchestrator, modelSelector, panel, activeRequestManager, () => lastActionRunner)
-    ),
-    vscode.commands.registerCommand(
-      "knowYourCode.runContextAction",
-      createRunContextActionCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
+      "knowYourCode.explainLine",
+      createExplainCurrentLineCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.refreshExplanation",
+      createRefreshExplanationCommand(
+        orchestrator,
+        modelSelector,
+        panel,
+        activeRequestManager,
+        () => lastActionRunner
+      )
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.switchProvider",
+      createSwitchProviderCommand(modelSelector)
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.setApiKey",
+      createSetApiKeyCommand()
     ),
     vscode.commands.registerCommand(
       "knowYourCode.showConnectedCalls",
@@ -126,12 +134,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       createShowContextActionsCommand()
     ),
     vscode.commands.registerCommand(
-      "knowYourCode.switchProvider",
-      createSwitchProviderCommand(modelSelector)
-    ),
-    vscode.commands.registerCommand(
-      "knowYourCode.setApiKey",
-      createSetApiKeyCommand()
+      "knowYourCode.runContextAction",
+      createRunContextActionCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
+        lastActionRunner = runner;
+      })
     ),
     vscode.commands.registerCommand("knowYourCode.stopGeneration", () => {
       if (activeRequestManager.stop()) {
