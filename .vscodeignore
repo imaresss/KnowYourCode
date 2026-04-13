@@ -1,8 +1,11 @@
 .git/
 src/
 tests/
+# Bundle sql.js WASM — required at runtime by the cache layer
 node_modules/**
 !node_modules/sql.js/**
+# Bundle the Cursor skills — copied to ~/.cursor/skills/ on activation
+!skills/**
 *.ts
 tsconfig.json
 .eslintrc*
