@@ -40,21 +40,23 @@ export class ModelSelectionService {
       }
     }
 
-    if (available.length === 1) {
+    const defaultSelection = options.forcePrompt ? undefined : this.getDefaultSelection(config, available);
+    if (defaultSelection) {
+      await this.rememberSelection(defaultSelection);
+      return defaultSelection;
+    }
+
+    if (!options.forcePrompt) {
+      void vscode.window.showWarningMessage("Please select the model first.");
+    }
+
+    if (available.length === 1 && options.forcePrompt) {
       const selected = resolveSelectedModel(config, available[0]);
       await this.rememberSelection(selected);
       if (options.persistAsDefault) {
         await this.persistDefaultSelection(selected);
       }
       return selected;
-    }
-
-    if (!options.forcePrompt) {
-      const defaultSelection = this.getDefaultSelection(config, available);
-      if (defaultSelection) {
-        await this.rememberSelection(defaultSelection);
-        return defaultSelection;
-      }
     }
 
     const picked = await this.showQuickPick(available, config, options);
@@ -190,7 +192,7 @@ export class ModelSelectionService {
       }
     }
 
-    return available[0] ? resolveSelectedModel(config, available[0]) : undefined;
+    return undefined;
   }
 }
 

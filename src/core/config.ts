@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { shouldEnableCurrentCursorHandoff } from "./ide";
 import { AIProvider, IncrementalConfig, ProviderSettings } from "./types";
 
 export interface ExtensionConfig {
@@ -44,18 +45,25 @@ export function getConfig(): ExtensionConfig {
     };
   }
 
+  const inspectedCursorHandoff = ws.inspect<boolean>("cursorHandoff");
+  const hasExplicitCursorHandoffOverride = hasExplicitConfigurationValue(inspectedCursorHandoff);
+  // Explicit settings always win; otherwise derive the runtime default from the current host IDE.
+  const cursorHandoff = hasExplicitCursorHandoffOverride
+    ? ws.get<boolean>("cursorHandoff", false)
+    : shouldEnableCurrentCursorHandoff();
+
   return {
     activeProvider: ws.get<AIProvider>("activeProvider", "openai"),
     providers,
     localEnabled: ws.get<boolean>("localEnabled", true),
     localEndpoint: ws.get<string>("localEndpoint", "http://127.0.0.1:11434/api/generate"),
-    localModelName: ws.get<string>("localModelName", "qwen2.5-coder:7b"),
+    localModelName: ws.get<string>("localModelName", ""),
     prefetchConnectedCalls: ws.get<boolean>("prefetchConnectedCalls", true),
     cacheTtlSeconds: Math.max(0, ws.get<number>("cacheTtlSeconds", 0)),
     inlineActionsEnabled: ws.get<boolean>("inlineActionsEnabled", true),
     selectionDebounceMs: Math.max(0, ws.get<number>("selectionDebounceMs", 250)),
     promptVersion: "v2",
-    cursorHandoff: ws.get<boolean>("cursorHandoff", true),
+    cursorHandoff,
     incremental: {
       enabled: ws.get<boolean>("incremental.enabled", true),
       minFunctionLines: Math.max(1, ws.get<number>("incremental.minFunctionLines", 20)),
@@ -66,6 +74,23 @@ export function getConfig(): ExtensionConfig {
       maxIncrementalDepth: Math.max(1, ws.get<number>("incremental.maxIncrementalDepth", 5))
     }
   };
+}
+
+function hasExplicitConfigurationValue(
+  inspected: ReturnType<vscode.WorkspaceConfiguration["inspect<boolean>"]>
+): boolean {
+  if (!inspected) {
+    return false;
+  }
+
+  return [
+    inspected.globalValue,
+    inspected.workspaceValue,
+    inspected.workspaceFolderValue,
+    inspected.globalLanguageValue,
+    inspected.workspaceLanguageValue,
+    inspected.workspaceFolderLanguageValue
+  ].some((value) => value !== undefined);
 }
 
 export function getActiveProviderSettings(config: ExtensionConfig): ProviderSettings & { provider: AIProvider } {

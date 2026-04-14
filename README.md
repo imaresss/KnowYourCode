@@ -154,7 +154,7 @@ KYC: Show Context Actions
 
 ## No API key required
 
-When running in Cursor with `cursorHandoff` mode (the default), KYC routes everything through Cursor's built-in AI. You don't need to configure an OpenAI, Claude, or Gemini key — Cursor handles the model.
+When running in Cursor, KYC enables `cursorHandoff` automatically and routes everything through Cursor's built-in AI. You don't need to configure an OpenAI, Claude, or Gemini key — Cursor handles the model.
 
 If you want to use KYC's standalone panel outside Cursor, you can configure a provider in Settings:
 
@@ -169,7 +169,7 @@ KYC: Switch Default AI Model
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `knowYourCode.cursorHandoff` | `true` | Route all commands to Cursor Chat instead of the built-in panel. |
+| `knowYourCode.cursorHandoff` | `false` | Explicit override for Cursor Chat handoff. If left unchanged, KYC enables it automatically only when Cursor is detected. |
 | `knowYourCode.activeProvider` | — | Provider for standalone mode: `openai`, `claude`, `gemini`, `local`. |
 | `knowYourCode.openai.apiKey` | — | OpenAI API key (standalone mode only). |
 | `knowYourCode.claude.apiKey` | — | Anthropic API key (standalone mode only). |

@@ -261,7 +261,7 @@
         },
         "knowYourCode.localModelName": {
           "type": "string",
-          "default": "qwen2.5-coder:7b",
+          "default": "",
           "description": "Model name for the local provider."
         },
         "knowYourCode.prefetchConnectedCalls": {
@@ -330,8 +330,8 @@
         },
         "knowYourCode.cursorHandoff": {
           "type": "boolean",
-          "default": true,
-          "description": "When enabled, all KYC commands send the prompt to Cursor Chat instead of using built-in providers. No API keys required."
+          "default": false,
+          "description": "Route KYC commands to Cursor Chat instead of built-in providers. If not explicitly configured, KYC enables this automatically only when it detects Cursor."
         }
       }
     }

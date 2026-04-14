@@ -19,12 +19,14 @@ import { ContextActionCodeLensProvider } from "./ui/contextActionCodeLensProvide
 import { ExplanationPanel } from "./ui/panel";
 import { logInfo } from "./utils/logger";
 import { CodeReferenceNavigator, CodeReferenceOccurrence } from "./core/codeReferences";
+import { detectCurrentIde } from "./core/ide";
 import { TutorialRepository } from "./cache/tutorialRepo";
 import { initTutorialCache } from "./tutorials/recommendations";
 import { installBundledCursorSkills } from "./cursor/installCursorSkills";
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   await installBundledCursorSkills(context);
+  const ide = detectCurrentIde();
   let config = getConfig();
   const db = await openDatabase(context);
   const repo = new ExplanationRepository(db);
@@ -151,7 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         config = getConfig();
         orchestrator.updateConfig(config);
         codeLensProvider.scheduleRefresh();
-        logInfo(`Configuration reloaded. Active provider: ${config.activeProvider}`);
+        logInfo(`Configuration reloaded. IDE: ${ide.displayName}. Cursor handoff: ${config.cursorHandoff}. Active provider: ${config.activeProvider}`);
       }
     }),
     vscode.languages.registerCodeLensProvider({ scheme: "file" }, codeLensProvider),
@@ -174,7 +176,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   void updateGeneratingContext();
-  logInfo(`Know Your Code activated. Provider: ${config.activeProvider}`);
+  logInfo(`Know Your Code activated. IDE: ${ide.displayName}. Cursor handoff: ${config.cursorHandoff}. Provider: ${config.activeProvider}`);
 }
 
 export function deactivate(): void {}
