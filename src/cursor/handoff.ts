@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { getConfig } from "../core/config";
 
 const CHAT_OPEN_COMMANDS = [
   "workbench.action.chat.open",
@@ -40,5 +41,5 @@ export async function handoffToCursorChat(prompt: string, label: string): Promis
 }
 
 export function isCursorHandoffEnabled(): boolean {
-  return vscode.workspace.getConfiguration("knowYourCode").get<boolean>("cursorHandoff", false);
+  return getConfig().cursorHandoff;
 }
