@@ -153,8 +153,8 @@
       },
       {
         "command": "knowYourCode.explainCallFlow",
-        "key": "ctrl+shift+f",
-        "mac": "cmd+shift+f",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d",
         "when": "editorTextFocus"
       },
       {
