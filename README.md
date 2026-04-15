@@ -137,7 +137,7 @@ Click any of them. KYC assembles the right skill trigger and hands it off to Cur
 | Action | Mac | Windows/Linux |
 |--------|-----|---------------|
 | Explain Function | `Cmd+Shift+E` | `Ctrl+Shift+E` |
-| Explain Call Flow | `Cmd+Shift+F` | `Ctrl+Shift+F` |
+| Explain Call Flow | `Cmd+Shift+D` | `Ctrl+Shift+D` |
 | Show Context Actions | `Cmd+Shift+K` | `Ctrl+Shift+K` |
 
 ### Command palette
