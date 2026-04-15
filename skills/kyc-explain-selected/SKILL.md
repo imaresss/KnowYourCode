@@ -1,6 +1,6 @@
 ---
 name: kyc-explain-selected
-description: Handle /kyc-explain-selected prompts. Explains selected code in two sections: what it does, then language concepts used (non-trivial only, deduplicated).
+description: "Handle /kyc-explain-selected prompts. Explains selected code in two sections: what it does, then language concepts used (non-trivial only, deduplicated)."
 ---
 
 # KYC — Explain Selected Code
