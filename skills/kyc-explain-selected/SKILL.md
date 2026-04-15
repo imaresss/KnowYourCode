@@ -1,85 +1,67 @@
 ---
 name: kyc-explain-selected
-description: >-
-  Handle /kyc-explain-selected prompts from the Know Your Code extension.
-  Use when a message starts with /kyc-explain-selected. Explains selected
-  code in two sections: what the code does (logic and purpose), then language
-  concepts used (non-trivial stdlib/library calls only, deduplicated against
-  chat history).
+description: Handle /kyc-explain-selected prompts. Explains selected code in two sections: what it does, then language concepts used (non-trivial only, deduplicated).
 ---
 
 # KYC — Explain Selected Code
 
-When a message starts with `/kyc-explain-selected`, follow this two-section structure.
-Assume the user may be new to the language — explain language-specific concepts clearly, but skip anything trivially obvious.
-
----
+When a message starts with `/kyc-explain-selected`, produce a two-section explanation. Assume the reader may be new to the language.
 
 ## Section 1 — What this code does
 
-**Single line selected:**
-Write 2–3 sentences. What this line accomplishes, and why it exists in this context. Reference the enclosing function if it helps orient the reader.
+**Single line:** 2–3 sentences — what it accomplishes and why it exists in context.
 
-**Multiple lines selected:**
-Write a brief intro sentence, then walk through the code in logical chunks — not line-by-line if multiple lines do the same thing. Focus on WHAT the code does and WHY it exists. The mechanics of language-specific calls belong in Section 2, not here.
+**Complex one-liner (chained operations):** explain it as a pipeline — one stage at a time — even though it is a single line.
 
-Keep Section 1 plain and readable — no jargon, no type signatures, no parameter lists.
+**Multiple lines:** brief intro sentence, then walk through in logical chunks (not line-by-line if multiple lines do the same thing). Focus on WHAT and WHY. Language-specific mechanics belong in Section 2.
 
----
+If the selection contains a try/catch or error handling construct: always explain what is being caught and what the recovery strategy is — this is often the most important thing to understand.
+
+If the selection is async (await, Promise, CompletableFuture, coroutine): explain what is being awaited and what happens on failure.
+
+If an obvious structural pattern is present (builder, decorator, factory, strategy): name it.
+
+No jargon, no type signatures, no parameter lists.
 
 ## Section 2 — Language concepts used here
 
-One entry per non-trivial stdlib or language-specific call found in the selection.
+One entry per non-trivial concept. Limit to 5 entries maximum — prioritise the least obvious ones.
 
-**Format per entry:**
-> **`functionName()`**
-> What it does in general. What it does specifically in this context. When you'd use it.
-> (2–4 sentences max)
+**Per entry:** `functionName()` — what it does in general, what it does in this context, when you'd use it. (2–4 sentences)
 
-### Always explain (non-trivial)
-
-- Higher-order functions: `map`, `filter`, `reduce`, `flatMap`, `forEach`, `collect`, `find`, `some`, `every`
-- Optional/Maybe handling: `Optional.of()`, `orElse()`, `orElseThrow()`, `ifPresent()`, `ifPresentOrElse()`
-- Stream/pipeline collectors: `groupingBy()`, `partitioningBy()`, `toMap()`, `joining()`
-- Sorting with comparators: `Comparator.comparing()`, `thenComparing()`, `sorted()`, `reversed()`
-- Async/concurrent constructs: `CompletableFuture`, `Promise`, `async/await`, `synchronized`, `volatile`
-- Regex usage: any call involving a pattern or regex literal
-- Date/time operations: parsing, formatting, arithmetic on dates
-- JSON parsing or serialization calls
-- Type-specific conversions with non-obvious behaviour: `parseInt` with radix, `split` with regex, `slice` with negative indices
+### Always explain
+- Higher-order functions: `map`, `filter`, `reduce`, `flatMap`, `forEach`, `find`, `some`, `every`, etc.
+- Optional/Maybe: `orElse()`, `orElseThrow()`, `ifPresent()`, `ifPresentOrElse()`
+- Stream collectors: `groupingBy()`, `partitioningBy()`, `toMap()`, `joining()`
+- Sorting: `Comparator.comparing()`, `thenComparing()`, `sorted()`, `reversed()`
+- Async/concurrent: `CompletableFuture`, `Promise`, `async/await`, `synchronized`, `volatile`
+- Regex, date/time operations, JSON parsing/serialization
+- Non-obvious conversions: `parseInt` with radix, `split` with regex, `slice` with negative indices
 - Try-with-resources, `finally` semantics
-- List comprehensions and generator expressions (Python)
+- List comprehensions, generator expressions (Python)
 - Destructuring assignments (JS/TS, Python)
-- Null-coalescing and optional chaining operators: `??`, `?.`, `?:`
-- Language-specific collection constructors with non-obvious behaviour: `Arrays.asList()`, `List.of()`, `Set.copyOf()`
+- Null-coalescing/optional chaining: `??`, `?.`, `?:`
+- Collection constructors with non-obvious behaviour: `Arrays.asList()`, `List.of()`, `Set.copyOf()`
 
-### Always skip (trivial)
-
-- Simple getters/property access: `obj.getId()`, `obj.name`, `entity.getValue()`
-- Basic arithmetic and comparisons: `a + b`, `x > 0`, `count++`, `total * 0.1`
-- Simple null checks: `if (x == null)`, `x != null`
-- Plain assignments and returns
-- Logging and print statements: `log.info()`, `console.log()`, `System.out.println()`
-- Basic object construction with obvious meaning: `new ArrayList<>()`, `new HashMap<>()`
+### Always skip
+- Getters, property access, basic arithmetic, comparisons
+- Simple null checks, plain assignments, plain returns
+- Logging and print statements
+- Basic object construction with obvious meaning
 - Simple string concatenation or interpolation
-- Basic boolean operators: `&&`, `||`, `!`
+- Basic boolean operators
 
-### Deduplication rules (silent — never mention to the user)
-
-1. **Chat history:** Before explaining any concept, scan previous messages in this conversation. If the concept was already explained, skip it entirely — do not say "as I mentioned before."
-2. **Within this response:** If the same function appears more than once in the selection, explain it once only.
-3. **Exception:** If the same function is used in a meaningfully different way in this selection compared to how it appeared in chat history, add a single sentence noting the difference.
+### Deduplication (silent — never mention to user)
+- If a concept was explained earlier in this conversation: skip it entirely — no "as I mentioned" note
+- If the same function appears more than once in the selection: explain it once only
+- Exception: if the same function is used in a meaningfully different way vs. chat history, add one sentence noting the difference
 
 ### When to omit Section 2
-
-If the selection contains zero non-trivial concepts, omit Section 2 entirely — do not write a heading with nothing under it.
-
----
+If the selection has zero non-trivial concepts, omit Section 2 entirely — do not write an empty heading.
 
 ## Hard rules — always apply
 
-- Infer the programming language from context — adapt all concept names and examples to that language
-- No parameter type lists or method signatures anywhere
-- No bullet lists of trivial operations
+- Infer the programming language from context — adapt all concept names and examples accordingly
+- No parameter type lists or method signatures
 - Section 1 must stand alone — a reader who skips Section 2 should still understand what the code does
-- Keep entries in Section 2 focused on this specific usage context, not a generic documentation dump
+- Keep Section 2 entries focused on this specific usage context, not a generic documentation dump

@@ -1,99 +1,76 @@
 ---
 name: kyc-explain-callflow
-description: >-
-  Handle /kyc-explain-callflow prompts from the Know Your Code extension.
-  Use when a message starts with /kyc-explain-callflow. Explains the named
-  function and its meaningful callees using a two-pass analysis: first classify
-  real function calls vs noise, then explain with an optional sequence diagram
-  for complex flows.
+description: Handle /kyc-explain-callflow prompts. Classifies calls as signal vs noise, then explains the flow with an optional sequence diagram.
 ---
 
 # KYC — Explain Call Flow
 
-When a message starts with `/kyc-explain-callflow`, follow this two-step process.
+When a message starts with `/kyc-explain-callflow`, follow these two steps.
 
----
+## Step 1 — Silent call classification (never show to user)
 
-## Step 1 — Silent call classification (do NOT show this to the user)
+Scan every call in the function body. Classify each as **signal** (explain it) or **noise** (discard it).
 
-Scan every function/method call in the function body. Classify each as **signal** (explain it) or **noise** (discard it). Do not mention this classification in your response.
+### Noise — discard
+- Getters/accessors: `get*()`, `is*()`, `has*()` on data objects or entities
+- Fluent/builder chains: `.stream()`, `.filter()`, `.map()`, `.collect()`, `.build()`, `.of()`, etc.
+- String/collection stdlib: `.toString()`, `.isEmpty()`, `.size()`, `.contains()`, `.trim()`, etc.
+- Logging: `log.*()`, `logger.*()`, `console.*()`, `System.out.*()`, `fmt.Print*()`
+- Null/assertion utilities: `requireNonNull()`, `StringUtils.*()`, `assert*()`
+- String formatting: `String.format()`, `fmt.Sprintf()`, f-strings
+- Simple math/conversion: `Math.*()`, `parseInt()`, type casts
 
-### Always noise — discard
-
-- **Getters/accessors:** any call matching `get*()`, `is*()`, `has*()` on a data object or entity
-- **Fluent/builder chains:** `.build()`, `.stream()`, `.filter()`, `.map()`, `.collect()`, `.toList()`, `.orElse()`, `.get()`, `.of()`, `.flatMap()`, `.reduce()`
-- **String/collection stdlib:** `.toString()`, `.isEmpty()`, `.size()`, `.contains()`, `.equals()`, `.trim()`, `.split()`, `.join()`
-- **Logging:** `log.*()`, `logger.*()`, `LOG.*()`, `console.*()`, `System.out.*()`, `print*()`, `fmt.Print*()`
-- **Null/assertion/validation utilities:** `Objects.requireNonNull()`, `StringUtils.*()`, `CollectionUtils.*()`, `assert*()`, `assertEquals*()`
-- **Language stdlib formatting:** `String.format()`, `fmt.Sprintf()`, `str.format()`, f-string equivalents
-- **Simple math/conversion:** `Math.*()`, `Integer.parseInt()`, `Long.valueOf()`, type casts
-
-### Always signal — include
-
-- **Calls on typed service/repo/client dependencies** whose class or field name contains any of: `Service`, `Repo`, `Repository`, `Dao`, `Client`, `Manager`, `Handler`, `Processor`, `Provider`, `Gateway`, `Factory`, `Adapter`, `Controller`, `Broker`, `Publisher`, `Consumer`
-- **External I/O calls:** HTTP clients (`restTemplate`, `httpClient`, `axios`, `fetch`), DB drivers, message queue producers (`kafkaProducer`, `rabbitTemplate`, `sqsClient`), cache clients (`redisTemplate`, `cacheManager`), file system operations beyond simple reads
-- **Same-class business method calls** where the method name starts with a meaningful verb: `process*`, `send*`, `save*`, `create*`, `update*`, `delete*`, `fetch*`, `load*`, `validate*`, `generate*`, `publish*`, `notify*`, `execute*`, `handle*`, `build*` (when building a complex object, not a fluent builder), `resolve*`, `compute*`
+### Signal — include
+- Calls on typed dependencies whose class or field name contains: `Service`, `Repo`, `Repository`, `Dao`, `Client`, `Manager`, `Handler`, `Processor`, `Provider`, `Gateway`, `Factory`, `Adapter`, `Controller`, `Broker`, `Publisher`, `Consumer`
+- External I/O: HTTP clients, DB drivers, message queue producers, cache clients, file system writes
+- Same-class business methods with meaningful verbs: `process*`, `save*`, `fetch*`, `validate*`, `publish*`, `execute*`, `handle*`, `resolve*`, etc.
 
 ### Ambiguous — use judgment
-
-- If the receiver is a helper/utility class (not a data entity, not stdlib), include the call if the method name implies business logic
-- When uncertain, lean toward **including** — a false positive is better than missing a real delegation
-
----
+- If the receiver is a helper/utility (not a data entity, not stdlib), include if the method implies business logic
+- When uncertain, lean toward including — a false positive is better than missing a real delegation
 
 ## Step 2 — Write the explanation
 
-### Structure
+**Overview**
+2–3 sentences: what this function does and the high-level sequence of calls it makes. If there are 4+ signal callees, identify the core delegation here — the one where the real business logic happens.
 
-**1. Overview**
-2–3 sentences. What this function does and the high-level sequence of calls it makes.
+**For each signal callee** (in call order)
+- What it does in this context
+- What data flows between caller and callee (conceptually, no type lists)
+- Why it is called at this point
 
-**2. For each signal callee** (in the order they are called)
-- What this callee does in the context of this function
-- What data flows between the parent and the callee (conceptually — no parameter type lists)
-- Why it is called at this point in the flow
+If a signal callee is called inside a loop: note this explicitly — it affects performance and data volume.
 
-**3. Sequence diagram** — draw one if EITHER condition is true:
-- There are 3 or more signal callees, OR
-- Conditional branching (if/else, switch, try/catch) controls which callees are called
+If the function calls itself (recursion): do not treat the self-call as a normal callee; explain the base case and recursive path instead.
 
-**4. Side effects** — one sentence each, only if present:
+If calls form a method chain (`find().transform().save()`): treat as a pipeline — explain the transformation at each stage, not as individual callees.
+
+**Sequence diagram** — draw one if EITHER is true:
+- 3+ signal callees, OR
+- Conditional branching (if/else, switch, try/catch) controls which callees are invoked
+
+Mermaid `sequenceDiagram` rules:
+- Name actors by class/object name, not variable name (`UserService` not `userService`)
+- Keep call labels ≤8 words, action-oriented (`fetch user by ID`, `save updated record`)
+- Use `alt` / `opt` for conditional paths — label each branch clearly
+- For try/catch: always show the error path with `alt [success] / [failure]` — never omit the catch block
+- If async (async/await, Promise, CompletableFuture, coroutine): mark async calls with a `<<async>>` note and show what the caller waits for before proceeding
+- Show return values only when the returned data meaningfully affects the next step
+- Caption below the diagram: describe the data or state transformation that occurs — not a restatement of the call sequence
+
+**Side effects** — one sentence each, only if present:
 - DB writes or deletes
 - External API calls
 - Events or messages published
 - Cache mutations
 
-### Sequence diagram format
-
-Use Mermaid `sequenceDiagram` syntax.
-
-```
-sequenceDiagram
-    participant FunctionName
-    participant CalleeName1
-    participant CalleeName2
-    ...
-```
-
-Rules:
-- Name actors by class or object name, not variable name (e.g. `UserService` not `userService`)
-- Keep call labels to ≤ 8 words, action-oriented (e.g. `fetch user by ID`, `save updated record`)
-- Use `alt` / `opt` blocks for conditional paths — label each branch clearly
-- Show return values only when the returned data meaningfully affects the next step
-- Add a plain-English caption below the diagram that explains the flow in 1–2 sentences — this caption should stand alone for someone new to the codebase
-
-### Zero signal callees
-
-If no signal callees are found, write:
-> "This function doesn't delegate to other business logic."
-Then give a 1-sentence description of what it does on its own (computation, transformation, validation, etc.).
-
----
+**Zero signal callees**
+If none found, write: "This function handles its logic directly without delegating to other services." Then 1 sentence on what it does (computation, transformation, validation, etc.).
 
 ## Hard rules — always apply
 
 - No parameter type lists or method signatures
 - No bullet lists of getters or accessors
 - Reference line numbers only when they genuinely help orient the reader
-- Explain idioms that a developer from another language might not recognise (inline, briefly)
+- Explain idioms a developer from another language might not recognise, inline and briefly
 - Plain prose for callees — not nested bullet points

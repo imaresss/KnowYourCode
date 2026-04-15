@@ -1,74 +1,46 @@
 ---
 name: kyc-explain-function
 description: >-
-  Handle /kyc-explain-function prompts from the Know Your Code extension.
-  Use when a message starts with /kyc-explain-function. Explains the named
-  function with depth calibrated to its complexity — prose for simple functions,
-  structured walkthrough for complex ones.
+  Handle /kyc-explain-function prompts. Explains a function with depth
+  calibrated to complexity — prose for simple, structured walkthrough for complex.
 ---
 
 # KYC — Explain Function
 
-When a message starts with `/kyc-explain-function`, follow this two-step process.
+When a message starts with `/kyc-explain-function`, follow these two steps.
 
----
+## Step 1 — Silent complexity assessment (never show to user)
 
-## Step 1 — Silent complexity assessment (do NOT show this to the user)
-
-Assess the function on these signals and assign a rating of LOW, MEDIUM, or HIGH:
-
-| Signal | Rule |
-|--------|------|
-| Line count | `< 15` → leans LOW · `15–50` → leans MEDIUM · `> 50` → leans HIGH |
-| Branches (if/else/switch/try-catch) | More than 3 in a short function → bump up one level |
-| Nested loops | Each nested loop → bump up one level |
-| External calls (API, DB, service, non-trivial method calls) | 2 or more → bump up one level |
-| Language verbosity | Java/C++ are verbose — apply a 0.7× multiplier to the line count before classifying |
-
-Pick the final rating, then go to Step 2. Do not mention the rating or this assessment in your response.
-
----
+Rate the function LOW, MEDIUM, or HIGH:
+- Lines: <15 → LOW · 15–50 → MEDIUM · >50 → HIGH
+- Branches (if/else/switch/try-catch): >3 → bump up one level
+- Nested loops: each → bump up one level
+- External calls (API, DB, service, non-trivial methods): ≥2 → bump up one level
+- Recursion present → bump up one level
+- Java/C++: apply 0.7× multiplier to line count before rating
 
 ## Step 2 — Write the explanation
 
-Use the format that matches the complexity rating.
-
 ### LOW — plain prose, no headers
+2–3 sentences: what it does, why it exists, key logic if non-obvious.
 
-Write 2–3 sentences. Cover: what it does, why it exists, and one note on the key logic if non-obvious. No bullet points, no headers, no parameter lists.
+### MEDIUM — three paragraphs
+**What it does** — 1–2 sentences.
+**How it works** — 2–3 sentences on the main flow.
+**Worth knowing** — up to 3 notes on non-obvious behavior: edge cases, side effects, patterns.
 
-### MEDIUM — three short paragraphs, light headers
-
-**What it does**
-1–2 sentences.
-
-**How it works**
-2–3 sentences covering the main flow in plain language.
-
-**Worth knowing**
-One note on anything non-obvious — an edge case, a side effect, a pattern worth naming.
-
-### HIGH — sectioned walkthrough
-
-**Summary**
-One sentence.
-
-**How it works**
-Break the function into its logical blocks. Explain each block in 1–3 sentences. Reference line numbers where they genuinely help orient the reader.
-
-**Key logic paths**
-Describe what happens in the main branches or conditions (the interesting if/else, loops, or error paths).
-
-**Worth knowing**
-Gotchas, side effects, or patterns a developer should be aware of when reading or modifying this function.
-
----
+### HIGH — sectioned walkthrough (aim for under 200 words)
+**Summary** — one sentence. Name the structural pattern if obvious (facade, factory, decorator, adapter).
+**How it works** — break into logical blocks, 1–3 sentences each.
+**Key logic paths** — main branches, loops, or error paths worth understanding.
+**Worth knowing** — gotchas, side effects, or things to know before modifying.
 
 ## Hard rules — always apply
 
-- No Inputs / Outputs / Dependencies sections anywhere
-- No bullet lists of parameters
-- Reference line numbers only when they help — not mechanically
-- If the language has idioms a developer from another language might not know, explain them briefly inline
-- If the function is a one-liner or trivially named (e.g. `getId()`), respond with a single sentence and stop
-- Adapt tone to complexity: plain and direct for LOW, clear and structured for MEDIUM/HIGH
+- If the function is a single line, write one sentence and stop
+- If async (async/await, Promise, CompletableFuture, coroutine): always state what it waits for, what it returns, and whether errors can be swallowed — regardless of complexity tier
+- If the function mutates external state (DB write, API call, shared object, event emit): always surface this — it is the most important thing a reader needs to know
+- No parameter lists, no Inputs/Outputs/Dependencies sections
+- Reference line numbers only when they genuinely help orient the reader
+- If the language has idioms unfamiliar across languages, explain them briefly inline
+- Adapt tone: plain for LOW, clear and structured for MEDIUM/HIGH
