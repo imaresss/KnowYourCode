@@ -1,13 +1,13 @@
 # KYC — Know Your Code
 
-> **Zero-config AI code understanding, native to Cursor.**  
-> Click a lens. Get the answer in Cursor Chat. No panel, no setup, no API key required.
+> **Zero-config AI code understanding for Cursor, Antigravity, and VS Code.**  
+> Click a lens. Get the answer in your AI chat panel. No panel setup, no API key required.
 
 ### See it in action
 
 ![KYC — code lens actions hand off to Cursor Chat](media/KycVideo.gif)
 
-*Above: **Explain Function**, **Explain Call Flow**, and **Explain Selected Code** appear as code lens links above your code. Click one to open Cursor Chat with a skill-tuned explanation.*
+*Above: **Explain Function**, **Explain Call Flow**, and **Explain Selected Code** appear as code lens links above your code. Click one to open your editor's AI chat with a skill-tuned explanation.*
 
 ---
 
@@ -40,19 +40,23 @@ The extension is also on the [Visual Studio Marketplace](https://marketplace.vis
 code --install-extension codevibeit.know-your-code
 ```
 
-### Cursor Skills (automatic)
+### Install in Cursor, Antigravity, and VS Code
 
-The three **Cursor Skills** (`kyc-explain-function`, `kyc-explain-callflow`, `kyc-explain-selected`) ship inside the extension. On **first activation** (and on every update), KYC copies them into `~/.cursor/skills/<skill-name>/SKILL.md`. You do **not** need to create folders or copy files by hand.
+Install **KYC — Know Your Code** from IDE's extension marketplace. Search for **`codevibeit`** or **KYC — Know Your Code**.
 
-Cursor loads skills from that directory automatically. If you edit a skill file locally, the next extension update may overwrite it with the bundled version — fork the skill in a new folder if you want a permanent custom copy.
+### KYC Skills (automatic in Cursor, Antigravity, and VS Code)
 
-> **Note:** The skills are what make the explanations smart (complexity-aware function explain, noise-filtered call flow, deduplicated “selected code” help). The extension still hands prompts to Cursor Chat without them, but quality is best when Cursor picks up these skill files.
+The three KYC skills (`kyc-explain-function`, `kyc-explain-callflow`, `kyc-explain-selected`) ship inside the extension. In **Cursor, Antigravity, and VS Code**, on first activation (and on every update), KYC copies them into `~/.cursor/skills/<skill-name>/SKILL.md`. You do **not** need to create folders or copy files by hand.
+
+IDE loads skills from that directory automatically. If you edit a skill file locally, the next extension update may overwrite it with the bundled version — fork the skill in a new folder if you want a permanent custom copy.
+
+> **Note:** The skills are what make the explanations smart (complexity-aware function explain, noise-filtered call flow, deduplicated “selected code” help). In other editors, KYC still works through chat handoff and standalone mode; the exact skill-loading behavior depends on the editor's AI environment.
 
 ---
 
 ## How it works
 
-KYC adds three inline **code lens** actions above every function in your editor. Click one — KYC hands the right prompt off to **Cursor Chat** automatically, and Cursor's AI answers directly in the chat panel.
+KYC adds three inline **code lens** actions above every function in your editor. Click one — KYC hands the right prompt to the best available AI chat target in your environment (Cursor, Antigravity, or VS Code with an AI extension), and the answer appears directly in chat.
 
 No sidebar. No custom panel. The explanation lives where you already work.
 
@@ -60,7 +64,7 @@ No sidebar. No custom panel. The explanation lives where you already work.
 
 ## The Three Skills
 
-KYC ships with three purpose-built **Cursor Skills** — pre-loaded instructions that tell Cursor's AI exactly how to explain your code. Each skill is tuned for a different question.
+KYC ships with three purpose-built skills that tune how explanations are generated. Each skill is tuned for a different question.
 
 ### ⚡ Explain Function — `kyc-explain-function`
 
@@ -130,7 +134,7 @@ Explain Function | Explain Call Flow
 
 When you select a line or range, you may also see **Explain Selected Code** on that line.
 
-Click any of them. KYC assembles the right skill trigger and hands it off to Cursor Chat.
+Click any of them. KYC assembles the right skill trigger and hands it to the available AI chat integration.
 
 ### Keyboard shortcuts
 
@@ -154,7 +158,12 @@ KYC: Show Context Actions
 
 ## No API key required
 
-When KYC detects any AI environment (AI IDE, AI assistant extension, or registered LM API model), it enables `cursorHandoff` automatically and routes commands to the best available chat panel. In Cursor, this means Cursor's built-in AI handles the model directly.
+When KYC detects any AI environment (AI IDE, AI assistant extension, or registered LM API model), it enables `cursorHandoff` automatically and routes commands to the best available chat panel.
+
+This includes:
+- Cursor with built-in AI chat
+- Antigravity with AI chat support
+- VS Code with one or more installed AI extensions like Claude, Trae, CodeX
 
 If you want to use KYC's standalone panel outside Cursor, you can configure a provider in Settings:
 
@@ -191,7 +200,7 @@ Each skill follows the same philosophy:
 
 ## Supported languages
 
-KYC's skills work with any language Cursor supports. The call flow skill has specific noise-filter rules tuned for:
+KYC's skills work with any language supported by your editor + language server setup. The call flow skill has specific noise-filter rules tuned for:
 
 - TypeScript / JavaScript
 - Java / Kotlin
@@ -203,7 +212,7 @@ Other languages benefit from the general signal/noise heuristics.
 
 ---
 
-## Standalone features (non-Cursor mode)
+## Standalone features (non-handoff mode)
 
 When `cursorHandoff` is set to `false`, KYC displays explanations in its own webview panel with:
 
@@ -225,10 +234,10 @@ Editor (code lens click)
 KYC Extension
   ├─ Resolves function / selection context via VS Code LSP
   ├─ Builds minimal skill trigger prompt
-  └─ Hands off to Cursor Chat
+  └─ Hands off to available AI chat target
         │
         ▼
-Cursor Chat
+AI Chat Target (Cursor / Antigravity / VS Code AI extension)
   ├─ kyc-explain-function skill  →  complexity-adaptive explanation
   ├─ kyc-explain-callflow skill  →  noise-filtered call flow + sequence diagram
   └─ kyc-explain-selected skill  →  two-section language concept explanation
