@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { shouldEnableCurrentCursorHandoff } from "./ide";
+import { isAiHandoffEnabled } from "./aiDetection";
 import { AIProvider, IncrementalConfig, ProviderSettings } from "./types";
 
 export interface ExtensionConfig {
@@ -45,12 +45,10 @@ export function getConfig(): ExtensionConfig {
     };
   }
 
-  const inspectedCursorHandoff = ws.inspect<boolean>("cursorHandoff");
-  const hasExplicitCursorHandoffOverride = hasExplicitConfigurationValue(inspectedCursorHandoff);
-  // Explicit settings always win; otherwise derive the runtime default from the current host IDE.
-  const cursorHandoff = hasExplicitCursorHandoffOverride
-    ? ws.get<boolean>("cursorHandoff", false)
-    : shouldEnableCurrentCursorHandoff();
+  // Keep handoff enabled whenever AI is detected (AI IDE, assistant extension,
+  // or LM API capability). A manual `cursorHandoff=true` still force-enables
+  // handoff, but `false` no longer force-disables it when AI is available.
+  const cursorHandoff = ws.get<boolean>("cursorHandoff", false) || isAiHandoffEnabled();
 
   return {
     activeProvider: ws.get<AIProvider>("activeProvider", "openai"),
@@ -74,23 +72,6 @@ export function getConfig(): ExtensionConfig {
       maxIncrementalDepth: Math.max(1, ws.get<number>("incremental.maxIncrementalDepth", 5))
     }
   };
-}
-
-function hasExplicitConfigurationValue(
-  inspected: ReturnType<vscode.WorkspaceConfiguration["inspect<boolean>"]>
-): boolean {
-  if (!inspected) {
-    return false;
-  }
-
-  return [
-    inspected.globalValue,
-    inspected.workspaceValue,
-    inspected.workspaceFolderValue,
-    inspected.globalLanguageValue,
-    inspected.workspaceLanguageValue,
-    inspected.workspaceFolderLanguageValue
-  ].some((value) => value !== undefined);
 }
 
 export function getActiveProviderSettings(config: ExtensionConfig): ProviderSettings & { provider: AIProvider } {
