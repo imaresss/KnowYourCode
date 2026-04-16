@@ -331,7 +331,7 @@
         "knowYourCode.cursorHandoff": {
           "type": "boolean",
           "default": false,
-          "description": "Route KYC commands to Cursor Chat instead of built-in providers. If not explicitly configured, KYC enables this automatically only when it detects Cursor."
+          "description": "Route KYC commands to the detected AI chat panel instead of built-in providers. KYC auto-enables this whenever any AI signal is detected (AI IDE, AI assistant extension, or registered LM API model). Set to true to force-enable even without detected AI."
         }
       }
     }

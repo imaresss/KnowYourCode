@@ -2,6 +2,7 @@ export type IdeKind =
   | "cursor"
   | "vscode"
   | "windsurf"
+  | "antigravity"
   | "intellij"
   | "webstorm"
   | "unknown";
@@ -33,6 +34,11 @@ const IDE_DEFINITIONS: readonly IdeDefinition[] = [
     kind: "windsurf",
     displayName: "Windsurf",
     fingerprints: ["windsurf", "codeium"]
+  },
+  {
+    kind: "antigravity",
+    displayName: "Antigravity IDE",
+    fingerprints: ["antigravity", "anti-gravity"]
   },
   {
     kind: "vscode",
