@@ -1,7 +1,7 @@
 # KYC — Know Your Code
 
-> **Zero-config AI code understanding for Cursor, Antigravity, and VS Code.**  
-> Click a lens. Get the answer in your AI chat panel. No panel setup, no API key required.
+> **Understand unfamiliar code in one click, without leaving your editor.**  
+> KYC helps you understand functions, call flows, and selected code instantly inside Cursor, Antigravity, and VS Code.
 
 ### See it in action
 
