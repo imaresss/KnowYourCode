@@ -76,6 +76,11 @@
         "command": "knowYourCode.stopGeneration",
         "title": "KYC: Stop Generation",
         "category": "Know Your Code"
+      },
+      {
+        "command": "knowYourCode.generateApiCurl",
+        "title": "KYC: Generate cURL",
+        "category": "Know Your Code"
       }
     ],
     "menus": {
@@ -98,6 +103,11 @@
         {
           "command": "knowYourCode.showContextActions",
           "group": "knowYourCode@4",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "knowYourCode.generateApiCurl",
+          "group": "knowYourCode@5",
           "when": "editorTextFocus"
         }
       ],
@@ -135,6 +145,10 @@
         {
           "command": "knowYourCode.stopGeneration",
           "when": "knowYourCode.isGenerating"
+        },
+        {
+          "command": "knowYourCode.generateApiCurl",
+          "when": "editorIsOpen"
         }
       ]
     },

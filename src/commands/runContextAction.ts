@@ -14,6 +14,11 @@ import { buildCodeReferenceMapForDocument } from "../core/codeReferences";
 import { getTutorialRecommendations } from "../tutorials/recommendations";
 import { ActiveRequestManager, isAbortError } from "../core/activeRequest";
 import { tryReuseFunctionCache } from "../core/cacheReuse";
+import {
+  buildApiMetadataSummary,
+  detectBackendApiContext,
+  isApiGenerationAction
+} from "../core/apiRequestDetection";
 
 export function createRunContextActionCommand(
   orchestrator: ExplanationOrchestrator,
@@ -38,16 +43,43 @@ export function createRunContextActionCommand(
       return;
     }
 
+    const apiDetection = detectBackendApiContext(context, actionId);
+
     const { isCursorHandoffEnabled } = await import("../cursor/handoff");
     if (isCursorHandoffEnabled()) {
+      if (apiDetection.isApiAction && !apiDetection.backendOnlyEligible) {
+        void vscode.window.showWarningMessage(apiDetection.reason ?? "Backend API context required.");
+        panel.show(
+          `KYC: ${actionLabel(actionId)} (unsupported)`,
+          "# Backend API context required\n\nNo backend API context detected. This feature currently supports backend code only.",
+          { cacheHit: false }
+        );
+        return;
+      }
       const { handoffToCursorChat } = await import("../cursor/handoff");
       const { buildCursorContextActionPrompt } = await import("../cursor/promptAssembler");
-      const cursorPrompt = buildCursorContextActionPrompt(actionId, context);
+      let cursorPrompt = buildCursorContextActionPrompt(actionId, context);
+      if (apiDetection.isApiAction && apiDetection.backendOnlyEligible) {
+        cursorPrompt += `\n\nDetected API metadata:\n${buildApiMetadataSummary(apiDetection)}`;
+      }
       await handoffToCursorChat(cursorPrompt, actionLabel(actionId));
       return;
     }
 
     const prompt = buildContextActionPrompt(actionId, context);
+    if (apiDetection.isApiAction && !apiDetection.backendOnlyEligible) {
+      void vscode.window.showWarningMessage(apiDetection.reason ?? "Backend API context required.");
+      panel.show(
+        `KYC: ${actionLabel(actionId)} (unsupported)`,
+        "# Backend API context required\n\nNo backend API context detected. This feature currently supports backend code only.",
+        { cacheHit: false }
+      );
+      return;
+    }
+
+    const enrichedPrompt = apiDetection.isApiAction
+      ? `${prompt}\n\nDetected API metadata:\n${buildApiMetadataSummary(apiDetection)}`
+      : prompt;
     const selection = options?.selectionOverride ?? await modelSelector.pickModel({
       title: "KYC: Select AI Model",
       placeHolder: `Choose a model for ${actionLabel(actionId)}`
@@ -69,11 +101,11 @@ export function createRunContextActionCommand(
         if (!rerunSelection) {
           return;
         }
-        await runAction(context, prompt, actionId, rerunSelection, true);
+        await runAction(context, enrichedPrompt, actionId, rerunSelection, true);
       }
     });
 
-    await runAction(context, prompt, actionId, selection, options?.forceRefresh === true);
+    await runAction(context, enrichedPrompt, actionId, selection, options?.forceRefresh === true);
   };
 
   async function runAction(
@@ -147,7 +179,7 @@ export function createRunContextActionCommand(
           });
           panel.show(
             `KYC: ${actionLabel(actionId)}`,
-            renderedMarkdown,
+            postProcessApiMarkdown(actionId, renderedMarkdown),
             {
               provider: meta.providerLabel,
               modelName: meta.modelName,
@@ -243,5 +275,17 @@ function actionLabel(actionId: KycActionId): string {
       return "Find Issues / Improvements";
     case "optimizeFunction":
       return "Optimize Function";
+    case "generateApiCurl":
+      return "Generate cURL";
   }
+}
+
+function postProcessApiMarkdown(actionId: KycActionId, markdown: string): string {
+  if (!isApiGenerationAction(actionId)) {
+    return markdown;
+  }
+  if (markdown.includes("BACKEND_API_NOT_DETECTED")) {
+    return "# Backend API context required\n\nNo backend API context detected. This feature currently supports backend code only.";
+  }
+  return markdown;
 }

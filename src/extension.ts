@@ -150,6 +150,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         lastActionRunner = runner;
       })
     ),
+    vscode.commands.registerCommand("knowYourCode.generateApiCurl", () =>
+      vscode.commands.executeCommand("knowYourCode.runContextAction", "generateApiCurl")
+    ),
     vscode.commands.registerCommand("knowYourCode.stopGeneration", () => {
       if (activeRequestManager.stop()) {
         void updateGeneratingContext();

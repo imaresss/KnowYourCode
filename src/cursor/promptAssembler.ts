@@ -38,5 +38,10 @@ export function buildCursorContextActionPrompt(
   const symbol = context.symbolContext?.symbolName;
   const ref = symbol ? `\`${symbol}\` in \`${file}\`` : `selected code in \`${file}\``;
 
-  return `/kyc-explain-selected ${ref}`;
+  switch (actionId) {
+    case "generateApiCurl":
+      return `/kyc-generate-api-request Generate one verbose multi-line cURL (absolute URL on the first line, one -H per header from the code, --data-raw for JSON body) from ${ref}. Follow the skill output format exactly.`;
+    default:
+      return `/kyc-explain-selected ${ref}`;
+  }
 }
