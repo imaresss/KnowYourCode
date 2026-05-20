@@ -2,6 +2,7 @@ import { ExplanationRepository } from "../cache/explanationRepo";
 import { ExtensionConfig } from "./config";
 import {
   ConnectedCallsSnapshot,
+  CreateTutorialOptions,
   ExplainCallFlowInput,
   ExplainCallFlowOptions,
   ExplainCallFlowResult,
@@ -20,16 +21,24 @@ import {
   StoredExplanation,
   StreamCallbacks,
   SymbolContext,
-  TokenUsage
+  TokenUsage,
+  TutorialMode,
+  TutorialScript
 } from "./types";
 import { buildSymbolKey } from "../intelligence/fingerprint";
 import { buildExplainFunctionInput } from "../intelligence/contextBuilder";
 import { analyzeDiff, isIncrementalCandidate } from "../intelligence/diffAnalysis";
 import { resolveConnectedSymbolContexts } from "../intelligence/symbolResolver";
-import { buildExplainCallFlowPrompt, buildExplainLinePrompt, buildIncrementalExplainPrompt } from "../providers/promptBuilder";
+import {
+  buildCreateTutorialPrompt,
+  buildExplainCallFlowPrompt,
+  buildExplainLinePrompt,
+  buildIncrementalExplainPrompt
+} from "../providers/promptBuilder";
 import { createProviderForSelection, PROVIDER_DISPLAY_NAMES } from "../providers/providerFactory";
 import { logInfo } from "../utils/logger";
 import { parseKYCResponse } from "./responseParser";
+import { parseTutorialScript } from "./tutorialParser";
 
 export class ExplanationOrchestrator {
   private config: ExtensionConfig;
@@ -247,6 +256,72 @@ export class ExplanationOrchestrator {
         meta: { ...this.buildPresentation(false, record), tokenUsage }
       };
     }, options.signal);
+  }
+
+  public async createTutorial(
+    mode: TutorialMode,
+    input: ExplainFunctionInput | ExplainCallFlowInput,
+    lineRange: { startLine: number; endLine: number },
+    selection: SelectedModel,
+    options: CreateTutorialOptions = {}
+  ): Promise<ExplanationResponse<TutorialScript>> {
+    const symbolKey =
+      mode === "function"
+        ? `tutorial::fn::${buildSymbolKey(input as SymbolContext)}`
+        : `tutorial::cf::${(input as ExplainCallFlowInput).workspaceRoot}::${(input as ExplainCallFlowInput).filePath}::${(input as ExplainCallFlowInput).symbolName}`;
+
+    const contentHash =
+      mode === "function"
+        ? (input as ExplainFunctionInput).contentHash
+        : (input as ExplainCallFlowInput).contentHash;
+    const dependencyHash =
+      mode === "function"
+        ? (input as ExplainFunctionInput).dependencyHash
+        : (input as ExplainCallFlowInput).dependencyHash;
+
+    const lookup: ExplanationLookup = {
+      symbolKey,
+      contentHash,
+      dependencyHash,
+      modelName: selection.modelName,
+      provider: selection.provider,
+      promptVersion: this.config.promptVersion
+    };
+
+    const existing = options.forceRefresh ? undefined : this.repo.findValid(lookup, this.getCacheTtlMs());
+
+    if (existing && existing.explanationType === "createTutorial") {
+      return {
+        result: existing.result as TutorialScript,
+        meta: this.buildPresentation(true, existing)
+      };
+    }
+
+    return this.withInFlightDedup(
+      lookup,
+      async () => {
+        const prompt = buildCreateTutorialPrompt(mode, input);
+        const { text: raw, tokenUsage } = await this.callProviderRaw(selection, prompt, options.signal);
+        const script = parseTutorialScript(raw, {
+          modelName: selection.modelName,
+          lineRange
+        });
+
+        const record: StoredExplanation = {
+          ...lookup,
+          explanationType: "createTutorial",
+          result: script,
+          createdAt: new Date().toISOString(),
+          sourceCode: input.code
+        };
+        this.repo.save(record);
+        return {
+          result: script,
+          meta: { ...this.buildPresentation(false, record), tokenUsage }
+        };
+      },
+      options.signal
+    );
   }
 
   public async runContextAction(input: {

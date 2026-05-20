@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { SymbolContext } from "../core/types";
+import { SymbolContext, TutorialMode } from "../core/types";
 import { KycInteractionContext } from "../context/interactionContext";
 
 export function buildCursorExplainFunctionPrompt(ctx: SymbolContext): string {
@@ -22,6 +22,16 @@ export function buildCursorExplainLinePrompt(
 export function buildCursorExplainCallFlowPrompt(ctx: SymbolContext): string {
   const file = path.basename(ctx.filePath);
   return `/kyc-explain-callflow \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine})`;
+}
+
+export function buildCursorCreateTutorialPrompt(mode: TutorialMode, ctx: SymbolContext): string {
+  const file = path.basename(ctx.filePath);
+  const kind = mode === "callflow" ? "callflow" : "function";
+  return (
+    `/kyc-create-tutorial (${kind}) \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine}) — ` +
+    `Respond as a readable Markdown tutorial (sections with headings and prose); do not dump raw JSON unless I explicitly ask for JSON/player payload. ` +
+    `For the interactive narrated player in the editor use Command Palette: **KYC: Create Tutorial**.`
+  );
 }
 
 export function buildCursorExplainWithCalleesPrompt(ctx: SymbolContext): string {

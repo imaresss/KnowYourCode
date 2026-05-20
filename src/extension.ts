@@ -10,6 +10,7 @@ import { createShowConnectedCallsCommand } from "./commands/showConnectedCalls";
 import { createShowContextActionsCommand } from "./commands/showContextActions";
 import { createSwitchProviderCommand } from "./commands/switchProvider";
 import { createSetApiKeyCommand } from "./commands/setApiKey";
+import { createCreateTutorialCommand } from "./commands/createTutorial";
 import { ActiveRequestManager } from "./core/activeRequest";
 import { getConfig } from "./core/config";
 import { LastActionRunner } from "./core/lastAction";
@@ -96,6 +97,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
         break;
       }
+      case "tutorialHighlight": {
+        const payload = message.payload as {
+          filePath?: string;
+          startLine?: number;
+          endLine?: number;
+          identifiers?: string[];
+          lineHint?: number;
+        } | undefined;
+        if (!payload?.filePath) {
+          break;
+        }
+        if (typeof payload.startLine === "number" && payload.startLine > 0) {
+          const endLine =
+            typeof payload.endLine === "number" && payload.endLine > 0 ? payload.endLine : payload.startLine;
+          codeReferenceNavigator.scheduleHighlightLine(payload.startLine, endLine, payload.filePath);
+        }
+        const firstId = payload.identifiers?.map((id) => String(id).trim()).find((id) => id.length > 0);
+        if (firstId) {
+          codeReferenceNavigator.scheduleHighlight(firstId, [], payload.lineHint);
+        }
+        break;
+      }
+      case "tutorialRegenerate": {
+        if (lastActionRunner) {
+          void lastActionRunner.rerun("regenerate");
+        } else {
+          void vscode.commands.executeCommand("knowYourCode.createTutorial");
+        }
+        break;
+      }
+      case "tutorialSwitchModel": {
+        if (lastActionRunner) {
+          void lastActionRunner.rerun("switchModel");
+        } else {
+          void vscode.commands.executeCommand("knowYourCode.switchProvider");
+        }
+        break;
+      }
     }
   });
 
@@ -147,6 +186,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       "knowYourCode.runContextAction",
       createRunContextActionCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
+        lastActionRunner = runner;
+      })
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.createTutorial",
+      createCreateTutorialCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
     ),

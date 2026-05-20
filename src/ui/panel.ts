@@ -1,6 +1,10 @@
 import * as vscode from "vscode";
 import { CodeReferenceMapEntry } from "../core/codeReferences";
+import type { TutorialPanelMeta, TutorialScript, TutorialShowUiOptions } from "../core/types";
 import { TutorialRecommendation } from "../tutorials/recommendations";
+import { buildTutorialPlayerHtml } from "./tutorialPlayerHtml";
+
+export type { TutorialPanelMeta, TutorialShowUiOptions } from "../core/types";
 
 export interface PanelShowOptions {
   provider?: string;
@@ -48,6 +52,18 @@ export class ExplanationPanel {
     this.ensurePanel(title);
     this.panel!.title = title;
     this.panel!.webview.html = buildStoppedHtml(title, provider, modelName);
+    this.panel!.reveal(vscode.ViewColumn.Beside, true);
+  }
+
+  public showTutorial(
+    script: TutorialScript,
+    meta: TutorialPanelMeta,
+    uiOptions: TutorialShowUiOptions = {}
+  ): void {
+    const title = `KYC: Tutorial — ${meta.symbolName}`;
+    this.ensurePanel(title);
+    this.panel!.title = title;
+    this.panel!.webview.html = buildTutorialPlayerHtml(script, meta, uiOptions, KYC_PANEL_BASE_CSS);
     this.panel!.reveal(vscode.ViewColumn.Beside, true);
   }
 
@@ -162,7 +178,7 @@ function buildWebviewHtml(markdown: string, options: PanelShowOptions): string {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>${CSS}</style>
+  <style>${KYC_PANEL_BASE_CSS}</style>
 </head>
 <body>
   <div class="toolbar">
@@ -590,7 +606,7 @@ function buildLoadingHtml(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>${CSS}</style>
+  <style>${KYC_PANEL_BASE_CSS}</style>
 </head>
 <body>
   <div class="toolbar">
@@ -644,7 +660,7 @@ function buildStoppedHtml(title: string, provider: string, modelName?: string): 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>${CSS}</style>
+  <style>${KYC_PANEL_BASE_CSS}</style>
 </head>
 <body>
   <div class="toolbar">
@@ -672,7 +688,7 @@ function buildStoppedHtml(title: string, provider: string, modelName?: string): 
 </html>`;
 }
 
-const CSS = `
+export const KYC_PANEL_BASE_CSS = `
   :root {
     --bg: var(--vscode-editor-background, #1e1e1e);
     --fg: var(--vscode-editor-foreground, #cccccc);

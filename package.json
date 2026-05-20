@@ -48,6 +48,11 @@
         "category": "Know Your Code"
       },
       {
+        "command": "knowYourCode.createTutorial",
+        "title": "KYC: Create Tutorial",
+        "category": "Know Your Code"
+      },
+      {
         "command": "knowYourCode.refreshExplanation",
         "title": "KYC: Refresh Explanation",
         "category": "Know Your Code"
@@ -96,8 +101,13 @@
           "when": "editorTextFocus"
         },
         {
-          "command": "knowYourCode.showContextActions",
+          "command": "knowYourCode.createTutorial",
           "group": "knowYourCode@4",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "knowYourCode.showContextActions",
+          "group": "knowYourCode@5",
           "when": "editorTextFocus"
         }
       ],
@@ -112,6 +122,10 @@
         },
         {
           "command": "knowYourCode.explainCallFlow",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.createTutorial",
           "when": "editorIsOpen"
         },
         {
@@ -340,7 +354,7 @@
     "build": "tsc -p ./",
     "watch": "tsc -w -p ./",
     "lint": "tsc -p ./ --noEmit",
-    "test": "npm run build && node --test tests/*.test.cjs"
+    "test": "npm run build && node --require ./tests/stub-vscode.cjs --test tests/*.test.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

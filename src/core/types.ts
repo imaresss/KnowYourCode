@@ -2,7 +2,12 @@ export type AIProvider = "openai" | "claude" | "gemini" | "local";
 
 export type SymbolKind = "function" | "method" | "class" | "unknown";
 
-export type ExplanationAction = "explainFunction" | "explainLine" | "explainCallFlow" | "contextAction";
+export type ExplanationAction =
+  | "explainFunction"
+  | "explainLine"
+  | "explainCallFlow"
+  | "contextAction"
+  | "createTutorial";
 
 export interface RelatedSymbol {
   name: string;
@@ -87,6 +92,70 @@ export interface GenericMarkdownResult {
   markdown: string;
 }
 
+/** Visual hint for a tutorial scene (MVP: informational only). */
+export interface TutorialSceneVisual {
+  type: "code" | "diagram";
+}
+
+export interface TutorialDiagramStep {
+  from: string;
+  to: string;
+  label?: string;
+}
+
+export interface TutorialDiagram {
+  type: "sequence" | "flow";
+  steps: TutorialDiagramStep[];
+}
+
+export interface TutorialScene {
+  id: string;
+  title: string;
+  narration: string;
+  highlightLines: number[];
+  highlightIdentifiers: string[];
+  visual?: TutorialSceneVisual;
+  takeaway?: string;
+}
+
+/**
+ * Structured script for the Create Tutorial webview player (scene-based narration).
+ */
+export interface TutorialScript {
+  title: string;
+  audience: string;
+  summary: string;
+  scenes: TutorialScene[];
+  diagram?: TutorialDiagram;
+  keyTakeaways: string[];
+}
+
+export interface CreateTutorialOptions {
+  forceRefresh?: boolean;
+  signal?: AbortSignal;
+}
+
+export type TutorialMode = "function" | "callflow";
+
+/** Metadata passed into the tutorial webview (highlights + code preview). */
+export interface TutorialPanelMeta {
+  filePath: string;
+  symbolName: string;
+  language: string;
+  rangeStartLine: number;
+  rangeEndLine: number;
+  sourceCode: string;
+  tutorialMode: TutorialMode;
+}
+
+export interface TutorialShowUiOptions {
+  provider?: string;
+  modelName?: string;
+  cacheHit?: boolean;
+  cacheLabel?: string;
+  tokenUsage?: TokenUsage;
+}
+
 export interface SymbolContext {
   workspaceRoot: string;
   filePath: string;
@@ -112,7 +181,12 @@ export interface StoredExplanation {
   modelName: string;
   provider: AIProvider;
   promptVersion: string;
-  result: ExplainFunctionResult | ExplainLineResult | ExplainCallFlowResult | GenericMarkdownResult;
+  result:
+    | ExplainFunctionResult
+    | ExplainLineResult
+    | ExplainCallFlowResult
+    | GenericMarkdownResult
+    | TutorialScript;
   createdAt: string;
   sourceCode?: string;
   incrementalDepth?: number;

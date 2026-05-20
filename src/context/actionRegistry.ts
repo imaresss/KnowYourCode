@@ -36,6 +36,12 @@ export function getAvailableActions(context: KycInteractionContext, cursorHandof
           description: "Trace the function call flow."
         },
         {
+          id: "createTutorial",
+          title: "Create Tutorial",
+          command: "knowYourCode.createTutorial",
+          description: "Scene-based narrated tutorial with highlights."
+        },
+        {
           id: "findDependencies",
           title: "Find Dependencies",
           command: "knowYourCode.showConnectedCalls",
@@ -61,6 +67,12 @@ export function getAvailableActions(context: KycInteractionContext, cursorHandof
       title: "Explain Call Flow",
       command: "knowYourCode.explainCallFlow",
       description: "Trace the function call flow."
+    },
+    {
+      id: "createTutorial",
+      title: "Create Tutorial",
+      command: "knowYourCode.createTutorial",
+      description: "Scene-based narrated tutorial with highlights."
     }
   ];
 

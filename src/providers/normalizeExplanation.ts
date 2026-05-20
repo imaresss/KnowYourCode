@@ -37,12 +37,12 @@ export function normalizeFromModelText(raw: string, options: NormalizeOptions = 
     fallbackFactory: (text) => createFallbackResponse(text) as unknown as Record<string, unknown>
   });
 
-  if (isExplainFunctionShape(parsed.parsed)) {
-    return normalizeObjectPayload(parsed.parsed);
-  }
-
   if (parsed.usedFallback) {
     return buildCleanFallback(trimmed);
+  }
+
+  if (isExplainFunctionShape(parsed.parsed)) {
+    return normalizeObjectPayload(parsed.parsed);
   }
 
   const fallbackContent = String((parsed.parsed as Record<string, unknown>).content ?? trimmed);

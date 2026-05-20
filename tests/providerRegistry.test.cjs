@@ -45,7 +45,7 @@ test("provider registry returns only enabled configured models", () => {
 
   assert.ok(availableIds.includes("openai:gpt-4o-mini"));
   assert.ok(availableIds.includes("openai:gpt-4.1"));
-  assert.ok(availableIds.includes("openai:o4-mini"));
+  assert.ok(availableIds.includes("openai:gpt-5-mini"));
   assert.ok(availableIds.includes("local:qwen2.5-coder:7b"));
   assert.equal(availableIds.some((value) => value.startsWith("claude:")), false);
   assert.equal(availableIds.some((value) => value.startsWith("gemini:")), false);

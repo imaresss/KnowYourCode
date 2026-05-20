@@ -1,4 +1,11 @@
-import { DiffAnalysis, ExplainCallFlowInput, ExplainFunctionInput, ExplainFunctionResult, ExplainLineInput } from "../core/types";
+import {
+  DiffAnalysis,
+  ExplainCallFlowInput,
+  ExplainFunctionInput,
+  ExplainFunctionResult,
+  ExplainLineInput,
+  TutorialMode
+} from "../core/types";
 
 export function buildExplainFunctionPrompt(input: ExplainFunctionInput): string {
   return [
@@ -109,6 +116,89 @@ export function buildExplainCallFlowPrompt(input: ExplainCallFlowInput): string 
     "",
     "--- FUNCTION CODE ---",
     input.code
+  ].join("\n");
+}
+
+export function buildCreateTutorialPrompt(mode: TutorialMode, input: ExplainFunctionInput | ExplainCallFlowInput): string {
+  const sharedRules = [
+    "You are creating an interactive, scene-based tutorial JSON for a VS Code extension player.",
+    "",
+    "Return ONLY valid JSON with EXACTLY these top-level keys:",
+    '  "title": short engaging title',
+    '  "audience": "beginner" | "intermediate" | "advanced" | "developer"',
+    '  "summary": 2-4 sentences overview',
+    '  "scenes": array of scene objects (minimum 3 scenes, maximum 12)',
+    '  "diagram": optional object describing overall flow (omit if not helpful)',
+    '  "keyTakeaways": array of 2-6 short bullet strings',
+    "",
+    "Each scene object MUST have EXACTLY these keys:",
+    '  "id": stable slug (kebab-case)',
+    '  "title": short heading shown in the player',
+    '  "narration": voiceover text for this scene (clear, conversational, 2-6 sentences)',
+    '  "highlightLines": array of file line numbers (1-based) to emphasize while this scene plays — only lines that exist in the snippet',
+    '  "highlightIdentifiers": array of identifier names (functions/vars) optional — max 3 per scene',
+    '  "visual": optional { "type": "code" } or { "type": "diagram" }',
+    '  "takeaway": optional one-line recap',
+    "",
+    "IMPORTANT:",
+    "- Order scenes in execution order.",
+    "- Narration must NOT assume the reader sees markdown; write for spoken audio.",
+    `- Mode is "${mode}". ${mode === "callflow" ? "Prioritize callers/callees and execution/data movement across the graph." : "Walk through the function body logically."}`,
+    "- Prefix spoken references to code with line numbers when helpful (they must match highlightLines).",
+    "",
+    '"diagram" when present MUST be:',
+    '  { "type": "sequence" | "flow", "steps": [ { "from": "...", "to": "...", "label": "optional" } ] }',
+    "",
+    "Return ONLY JSON. No markdown fences, no commentary outside JSON."
+  ].join("\n");
+
+  if (mode === "function") {
+    const fn = input as ExplainFunctionInput;
+    return [
+      SYSTEM_PREAMBLE,
+      "",
+      sharedRules,
+      "",
+      "--- FUNCTION CONTEXT ---",
+      `Function: ${fn.symbolName}`,
+      `Language: ${fn.language}`,
+      `File: ${fn.filePath}`,
+      `Signature: ${fn.signature ?? "N/A"}`,
+      `Lines: ${fn.range.startLine}-${fn.range.endLine}`,
+      "",
+      "Imports:",
+      ...(fn.imports.length ? fn.imports.slice(0, 20) : ["  (none)"]),
+      "",
+      "Callers:",
+      ...(fn.callers.length ? fn.callers.map((c) => `  - ${c.name}`) : ["  (none)"]),
+      "",
+      "Callees:",
+      ...(fn.callees.length ? fn.callees.map((c) => `  - ${c.name}`) : ["  (none)"]),
+      "",
+      "--- FUNCTION CODE ---",
+      fn.code
+    ].join("\n");
+  }
+
+  const cf = input as ExplainCallFlowInput;
+  return [
+    SYSTEM_PREAMBLE,
+    "",
+    sharedRules,
+    "",
+    "--- CALL FLOW CONTEXT ---",
+    `Function: ${cf.symbolName} (${cf.symbolKind})`,
+    `Language: ${cf.language}`,
+    `File: ${cf.filePath}`,
+    "",
+    "Callers:",
+    ...(cf.callers.length ? cf.callers.map((c) => `  - ${c.name}${c.signature ? ` | ${c.signature}` : ""}`) : ["  (none)"]),
+    "",
+    "Callees:",
+    ...(cf.callees.length ? cf.callees.map((c) => `  - ${c.name}${c.signature ? ` | ${c.signature}` : ""}`) : ["  (none)"]),
+    "",
+    "--- FUNCTION CODE ---",
+    cf.code
   ].join("\n");
 }
 

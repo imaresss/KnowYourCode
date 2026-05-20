@@ -4,7 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { logInfo } from "../utils/logger";
 
-const SKILL_DIRS = ["kyc-explain-function", "kyc-explain-callflow", "kyc-explain-selected"] as const;
+const SKILL_DIRS = ["kyc-explain-function", "kyc-explain-callflow", "kyc-explain-selected", "kyc-create-tutorial"] as const;
 
 /**
  * Copies bundled SKILL.md files into ~/.cursor/skills/<name>/ so Cursor picks them up.
