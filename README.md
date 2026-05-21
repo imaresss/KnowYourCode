@@ -1,13 +1,13 @@
 # KYC — Know Your Code
 
 > **Understand unfamiliar code in one click, without leaving your editor.**  
-> KYC helps you understand functions, call flows, and selected code instantly inside Cursor, Antigravity, and VS Code.
+> KYC helps you understand functions, call flows, selected code, and test coverage ideas instantly inside Cursor, Antigravity, and VS Code.
 
 ### See it in action
 
 ![KYC — code lens actions hand off to Cursor Chat](media/KycVideo.gif)
 
-*Above: **Explain Function**, **Explain Call Flow**, and **Explain Selected Code** appear as code lens links above your code. Click one to open your editor's AI chat with a skill-tuned explanation.*
+*Above: **Explain Function**, **Explain Call Flow**, **Explain Selected Code**, and **Suggest Tests** appear as code lens links above your code. Click one to open your editor's AI chat with a skill-tuned response.*
 
 ---
 
@@ -46,25 +46,25 @@ Install **KYC — Know Your Code** from IDE's extension marketplace. Search for 
 
 ### KYC Skills (automatic in Cursor, Antigravity, and VS Code)
 
-The three KYC skills (`kyc-explain-function`, `kyc-explain-callflow`, `kyc-explain-selected`) ship inside the extension. In **Cursor, Antigravity, and VS Code**, on first activation (and on every update), KYC copies them into `~/.cursor/skills/<skill-name>/SKILL.md`. You do **not** need to create folders or copy files by hand.
+The four KYC skills (`kyc-explain-function`, `kyc-explain-callflow`, `kyc-explain-selected`, `kyc-suggest-tests`) ship inside the extension. In **Cursor, Antigravity, and VS Code**, on first activation (and on every update), KYC copies them into `~/.cursor/skills/<skill-name>/SKILL.md`. You do **not** need to create folders or copy files by hand.
 
 IDE loads skills from that directory automatically. If you edit a skill file locally, the next extension update may overwrite it with the bundled version — fork the skill in a new folder if you want a permanent custom copy.
 
-> **Note:** The skills are what make the explanations smart (complexity-aware function explain, noise-filtered call flow, deduplicated “selected code” help). In other editors, KYC still works through chat handoff and standalone mode; the exact skill-loading behavior depends on the editor's AI environment.
+> **Note:** The skills are what make the responses smart (complexity-aware function explain, noise-filtered call flow, deduplicated “selected code” help, and readable test plans). In other editors, KYC still works through chat handoff and standalone mode; the exact skill-loading behavior depends on the editor's AI environment.
 
 ---
 
 ## How it works
 
-KYC adds three inline **code lens** actions above every function in your editor. Click one — KYC hands the right prompt to the best available AI chat target in your environment (Cursor, Antigravity, or VS Code with an AI extension), and the answer appears directly in chat.
+KYC adds inline **code lens** actions above every function in your editor. Click one — KYC hands the right prompt to the best available AI chat target in your environment (Cursor, Antigravity, or VS Code with an AI extension), and the answer appears directly in chat.
 
 No sidebar. No custom panel. The explanation lives where you already work.
 
 ---
 
-## The Three Skills
+## The Four Skills
 
-KYC ships with three purpose-built skills that tune how explanations are generated. Each skill is tuned for a different question.
+KYC ships with four purpose-built skills that tune how explanations and test suggestions are generated. Each skill is tuned for a different question.
 
 ### ⚡ Explain Function — `kyc-explain-function`
 
@@ -122,6 +122,27 @@ Trivial operations are always skipped (getters, basic arithmetic, logging, plain
 
 ---
 
+### 🧪 Suggest Tests — `kyc-suggest-tests`
+
+**When to use:** You want a readable test plan for the current function before asking Cursor to write tests.
+
+The skill silently analyzes:
+
+- Branches and error paths
+- External dependencies that need mocks or stubs
+- Function shape, such as pure mapper, constructor, async workflow, or side-effecting service method
+- The likely language and test framework from local file names, imports, annotations, and nearby test conventions
+
+The output is a structured plan, not test code. It groups named cases into **Happy path**, **Edge & boundary**, **Error cases**, and **Mocking notes**, with each case showing:
+
+- **When:** the condition being tested
+- **Arrange:** what to set up
+- **Assert:** what behavior to verify
+
+It is language-aware for Java, Python, Go, TypeScript, JavaScript, Ruby, Rust, C, C++, and other common ecosystems. For example, it favors table-driven cases in Go, `Ok`/`Err` paths in Rust, pointer/bounds cases in C/C++, async resolution/rejection cases in JS/TS, and JUnit/Mockito-style dependency notes in Java.
+
+---
+
 ## Usage
 
 ### Code lens actions
@@ -129,7 +150,7 @@ Trivial operations are always skipped (getters, basic arithmetic, logging, plain
 Above each function you’ll see muted inline links (VS Code **CodeLens**), for example:
 
 ```
-Explain Function | Explain Call Flow
+Explain Function | Explain Call Flow | Suggest Tests
 ```
 
 When you select a line or range, you may also see **Explain Selected Code** on that line.
@@ -151,6 +172,7 @@ All commands are available via `Cmd+Shift+P` / `Ctrl+Shift+P`:
 ```
 KYC: Explain Function
 KYC: Explain Call Flow
+KYC: Suggest Tests
 KYC: Show Context Actions
 ```
 
@@ -193,22 +215,24 @@ Each skill follows the same philosophy:
 
 - **Silent pre-processing** — complexity rating, call classification, and deduplication checks happen without polluting the response.
 - **Adaptive output** — the format matches the actual complexity of the code, not a fixed template.
-- **Language-aware** — all three skills infer the programming language and adapt idiom explanations accordingly. Java verbosity is accounted for in complexity scoring.
+- **Language-aware** — all four skills infer the programming language and adapt idiom explanations or test-plan guidance accordingly. Java verbosity is accounted for in complexity scoring, and test suggestions adapt to common language/framework conventions.
 - **No noise** — trivial getters, logging calls, basic arithmetic, and already-explained concepts are filtered before the response is written.
 
 ---
 
 ## Supported languages
 
-KYC's skills work with any language supported by your editor + language server setup. The call flow skill has specific noise-filter rules tuned for:
+KYC's skills work with any language supported by your editor + language server setup. The call flow and suggest-tests skills include language-aware heuristics tuned for:
 
 - TypeScript / JavaScript
 - Java / Kotlin
 - Python
 - Go
 - C / C++
+- Ruby
+- Rust
 
-Other languages benefit from the general signal/noise heuristics.
+Other languages benefit from the general signal/noise and test-planning heuristics.
 
 ---
 
@@ -240,7 +264,8 @@ KYC Extension
 AI Chat Target (Cursor / Antigravity / VS Code AI extension)
   ├─ kyc-explain-function skill  →  complexity-adaptive explanation
   ├─ kyc-explain-callflow skill  →  noise-filtered call flow + sequence diagram
-  └─ kyc-explain-selected skill  →  two-section language concept explanation
+  ├─ kyc-explain-selected skill  →  two-section language concept explanation
+  └─ kyc-suggest-tests skill     →  readable scenario-based test plan
 ```
 
 ---
