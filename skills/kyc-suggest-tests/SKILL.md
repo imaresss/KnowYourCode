@@ -1,9 +1,9 @@
 ---
-name: kyc-suggest-tests
+
+## name: kyc-suggest-tests
 description: >-
   Handle /kyc-suggest-tests prompts. Produces a readable structured test plan
   with named cases grouped by scenario — no test code, only arrange and assert.
----
 
 # KYC — Suggest Tests
 
@@ -22,24 +22,26 @@ Read the target function and assess:
 
 Use these as hints, not hard requirements. Prefer evidence from the current repo over generic defaults.
 
-| Language | Common signals | Likely test style |
-|--------|----------------|-------------------|
-| TypeScript / JavaScript | `.ts`, `.tsx`, `.js`, `.jsx`, `.test.*`, `.spec.*`, `jest`, `vitest`, `mocha`, `describe`, `it` | Jest, Vitest, Mocha, or framework-agnostic `describe/it` cases |
-| Python | `.py`, `test_*.py`, `*_test.py`, `pytest`, `unittest`, `def test_` | pytest or unittest |
-| Java | `.java`, `@Test`, `org.junit`, `Mockito`, `AssertJ`, `Test.java` | JUnit 5/JUnit 4 with Mockito where dependencies exist |
-| Go | `.go`, `_test.go`, `testing`, `t.Run`, `testify` | Go `testing` package, table-driven tests when useful |
-| Ruby | `.rb`, `_spec.rb`, `RSpec`, `Minitest`, `describe`, `it` | RSpec or Minitest |
-| Rust | `.rs`, `#[test]`, `mod tests`, `assert_eq!`, `Result` | Rust unit tests with `#[test]`; property tests only when clearly useful |
-| C | `.c`, `.h`, `cmocka`, `Unity`, `Check`, `assert` | C unit tests, boundary and memory/error-path focused |
-| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp`, `gtest`, `catch2`, `doctest` | GoogleTest, Catch2, doctest, or framework-agnostic cases |
-| C# | `.cs`, `xUnit`, `NUnit`, `MSTest`, `[Fact]`, `[Test]` | xUnit/NUnit/MSTest |
-| PHP | `.php`, `PHPUnit`, `test*`, `*Test.php` | PHPUnit |
-| Kotlin | `.kt`, `kotlin.test`, JUnit annotations | JUnit/kotlin.test |
-| Swift | `.swift`, `XCTest`, `func test` | XCTest |
-| Scala | `.scala`, `ScalaTest`, `munit`, `specs2` | ScalaTest/munit/specs2 |
-| Dart | `.dart`, `package:test`, `flutter_test` | Dart test / Flutter test |
-| Elixir | `.ex`, `.exs`, `ExUnit`, `test "` | ExUnit |
-| R | `.R`, `testthat`, `test_that` | testthat |
+
+| Language                | Common signals                                                                                  | Likely test style                                                       |
+| ----------------------- | ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| TypeScript / JavaScript | `.ts`, `.tsx`, `.js`, `.jsx`, `.test.`*, `.spec.*`, `jest`, `vitest`, `mocha`, `describe`, `it` | Jest, Vitest, Mocha, or framework-agnostic `describe/it` cases          |
+| Python                  | `.py`, `test_*.py`, `*_test.py`, `pytest`, `unittest`, `def test_`                              | pytest or unittest                                                      |
+| Java                    | `.java`, `@Test`, `org.junit`, `Mockito`, `AssertJ`, `Test.java`                                | JUnit 5/JUnit 4 with Mockito where dependencies exist                   |
+| Go                      | `.go`, `_test.go`, `testing`, `t.Run`, `testify`                                                | Go `testing` package, table-driven tests when useful                    |
+| Ruby                    | `.rb`, `_spec.rb`, `RSpec`, `Minitest`, `describe`, `it`                                        | RSpec or Minitest                                                       |
+| Rust                    | `.rs`, `#[test]`, `mod tests`, `assert_eq!`, `Result`                                           | Rust unit tests with `#[test]`; property tests only when clearly useful |
+| C                       | `.c`, `.h`, `cmocka`, `Unity`, `Check`, `assert`                                                | C unit tests, boundary and memory/error-path focused                    |
+| C++                     | `.cpp`, `.cc`, `.cxx`, `.hpp`, `gtest`, `catch2`, `doctest`                                     | GoogleTest, Catch2, doctest, or framework-agnostic cases                |
+| C#                      | `.cs`, `xUnit`, `NUnit`, `MSTest`, `[Fact]`, `[Test]`                                           | xUnit/NUnit/MSTest                                                      |
+| PHP                     | `.php`, `PHPUnit`, `test*`, `*Test.php`                                                         | PHPUnit                                                                 |
+| Kotlin                  | `.kt`, `kotlin.test`, JUnit annotations                                                         | JUnit/kotlin.test                                                       |
+| Swift                   | `.swift`, `XCTest`, `func test`                                                                 | XCTest                                                                  |
+| Scala                   | `.scala`, `ScalaTest`, `munit`, `specs2`                                                        | ScalaTest/munit/specs2                                                  |
+| Dart                    | `.dart`, `package:test`, `flutter_test`                                                         | Dart test / Flutter test                                                |
+| Elixir                  | `.ex`, `.exs`, `ExUnit`, `test "`                                                               | ExUnit                                                                  |
+| R                       | `.R`, `testthat`, `test_that`                                                                   | testthat                                                                |
+
 
 For any other renowned language, infer the ecosystem from local filenames/imports and keep the plan focused on observable behavior: inputs, outputs, side effects, errors, boundaries, and dependency interactions.
 
@@ -66,12 +68,14 @@ Then a horizontal rule `---` before the first scenario section.
 
 Use `##` for each section title. Use **numbered** case titles (`### 1. …`, `### 2. …`) inside each section.
 
-| Section | When to include |
-|--------|------------------|
-| `## Happy path` | Always — 2–4 cases |
-| `## Edge & boundary` | Only if branches or input validation exist |
-| `## Error cases` | Only if throws, error returns, or catch paths exist |
-| `## Mocking notes` | Only if external dependencies were found in Step 1 |
+
+| Section              | When to include                                     |
+| -------------------- | --------------------------------------------------- |
+| `## Happy path`      | Always — 2–4 cases                                  |
+| `## Edge & boundary` | Only if branches or input validation exist          |
+| `## Error cases`     | Only if throws, error returns, or catch paths exist |
+| `## Mocking notes`   | Only if external dependencies were found in Step 1  |
+
 
 ### Format for each test case (repeat for every case)
 
@@ -87,6 +91,7 @@ Use `##` for each section title. Use **numbered** case titles (`### 1. …`, `##
 ```
 
 Rules for case titles:
+
 - Use a clear scenario title — e.g. `Rejects expired token` — not a code-style `should …` string unless the project clearly uses that style (Jest/RSpec).
 - Keep **When**, **Arrange**, and **Assert** on separate lines; never merge into one paragraph.
 - Add a blank line between cases.
@@ -186,3 +191,4 @@ Charges the order total and returns a payment confirmation. Focus on validation,
 - **No single giant code block** wrapping the entire plan — only use fenced blocks if showing a tiny example snippet the user asked for
 - **Constructor or pure mapper:** opening line notes that; then 1–2 cases under Happy path only
 - **Infer language** from context; adapt case title style to the ecosystem
+
