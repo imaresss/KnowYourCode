@@ -48,6 +48,11 @@
         "category": "Know Your Code"
       },
       {
+        "command": "knowYourCode.suggestTests",
+        "title": "KYC: Suggest Tests",
+        "category": "Know Your Code"
+      },
+      {
         "command": "knowYourCode.refreshExplanation",
         "title": "KYC: Refresh Explanation",
         "category": "Know Your Code"
@@ -96,8 +101,13 @@
           "when": "editorTextFocus"
         },
         {
-          "command": "knowYourCode.showContextActions",
+          "command": "knowYourCode.suggestTests",
           "group": "knowYourCode@4",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "knowYourCode.showContextActions",
+          "group": "knowYourCode@5",
           "when": "editorTextFocus"
         }
       ],
@@ -112,6 +122,10 @@
         },
         {
           "command": "knowYourCode.explainCallFlow",
+          "when": "editorIsOpen"
+        },
+        {
+          "command": "knowYourCode.suggestTests",
           "when": "editorIsOpen"
         },
         {

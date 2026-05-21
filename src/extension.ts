@@ -4,6 +4,7 @@ import { ExplanationRepository } from "./cache/explanationRepo";
 import { createExplainCurrentFunctionCommand } from "./commands/explainCurrentFunction";
 import { createExplainCurrentLineCommand } from "./commands/explainCurrentLine";
 import { createExplainCallFlowCommand } from "./commands/explainCallFlow";
+import { createSuggestTestsCommand } from "./commands/suggestTests";
 import { createRefreshExplanationCommand } from "./commands/refreshExplanation";
 import { createRunContextActionCommand } from "./commands/runContextAction";
 import { createShowConnectedCallsCommand } from "./commands/showConnectedCalls";
@@ -111,6 +112,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       createExplainCallFlowCommand(orchestrator, modelSelector, panel, activeRequestManager, (runner) => {
         lastActionRunner = runner;
       })
+    ),
+    vscode.commands.registerCommand(
+      "knowYourCode.suggestTests",
+      createSuggestTestsCommand()
     ),
     vscode.commands.registerCommand(
       "knowYourCode.explainLine",

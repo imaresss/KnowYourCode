@@ -24,6 +24,11 @@ export function buildCursorExplainCallFlowPrompt(ctx: SymbolContext): string {
   return `/kyc-explain-callflow \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine})`;
 }
 
+export function buildCursorSuggestTestsPrompt(ctx: SymbolContext): string {
+  const file = path.basename(ctx.filePath);
+  return `/kyc-suggest-tests \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine})`;
+}
+
 export function buildCursorExplainWithCalleesPrompt(ctx: SymbolContext): string {
   const file = path.basename(ctx.filePath);
   const calleeNames = ctx.callees.slice(0, 8).map((c) => c.name).join(", ");
