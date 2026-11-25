@@ -342,6 +342,9 @@ export class ExplanationOrchestrator {
     if (stored.explanationType !== "explainFunction") {
       return undefined;
     }
+    if (stored.promptVersion !== this.config.promptVersion) {
+      return undefined;
+    }
     if (stored.contentHash !== contentHash) {
       return undefined;
     }

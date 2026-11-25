@@ -36,17 +36,16 @@ export function formatExplanationMarkdown(
   const steps = result.stepByStep.length ? result.stepByStep : ["No detailed execution steps were returned."];
   sections.push(steps.map((s, i) => `${i + 1}. ${formatStepWithLineNumber(s)}`).join("\n"));
 
-  sections.push("## Inputs");
-  const inputs = result.inputs.length ? result.inputs : ["No explicit inputs were identified."];
-  sections.push(inputs.map((item) => `- ${item}`).join("\n"));
-
-  sections.push("## Outputs");
-  const outputs = result.outputs.length ? result.outputs : ["No explicit outputs were identified."];
-  sections.push(outputs.map((item) => `- ${item}`).join("\n"));
-
-  sections.push("## Dependencies");
-  const deps = result.dependencies.length ? result.dependencies : ["No direct dependencies were identified."];
-  sections.push(deps.map((item) => `- ${item}`).join("\n"));
+  // Legacy cached/provider results may still carry these fields. New prompts
+  // integrate contracts into the walkthrough instead of requiring inventories.
+  for (const [heading, items] of [
+    ["Inputs", result.inputs], ["Outputs", result.outputs], ["Dependencies", result.dependencies]
+  ] as const) {
+    if (items.length) {
+      sections.push(`## ${heading}`);
+      sections.push(items.map((item) => `- ${item}`).join("\n"));
+    }
+  }
 
   return sections.join("\n\n");
 }

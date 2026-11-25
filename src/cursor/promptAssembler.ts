@@ -1,47 +1,67 @@
-import * as path from "node:path";
-import { SymbolContext } from "../core/types";
-import { KycInteractionContext } from "../context/interactionContext";
+import type { SymbolContext } from "../core/types";
+import type { KycInteractionContext } from "../context/interactionContext";
+import { EXPLANATION_POLICY } from "../core/explanationPolicy";
+
+// JSON keeps code, including backticks and partial expressions, intact as data.
+function snapshot(code: string, language: string): string {
+  return `Target snapshot (JSON data):\n${JSON.stringify({ language, code })}`;
+}
+
+function symbolPrompt(skill: string, ctx: SymbolContext): string {
+  return [
+    `/${skill} ${JSON.stringify(ctx.symbolName)} in ${JSON.stringify(ctx.filePath)} (lines ${ctx.range.startLine}–${ctx.range.endLine})`,
+    EXPLANATION_POLICY,
+    snapshot(ctx.code, ctx.language)
+  ].join("\n\n");
+}
 
 export function buildCursorExplainFunctionPrompt(ctx: SymbolContext): string {
-  const file = path.basename(ctx.filePath);
-  return `/kyc-explain-function \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine})`;
+  return symbolPrompt("kyc-explain-function", ctx);
 }
 
 export function buildCursorExplainLinePrompt(
   filePath: string,
-  _language: string,
+  language: string,
   lineText: string,
   lineNumber: number,
   enclosingName: string,
-  _enclosingCode: string
+  enclosingCode: string
 ): string {
-  const file = path.basename(filePath);
-  return `/kyc-explain-line Line ${lineNumber} in \`${file}\` (inside \`${enclosingName}\`): \`${lineText.trim()}\``;
+  return [
+    `/kyc-explain-selected Line ${lineNumber} in ${JSON.stringify(filePath)} (inside ${JSON.stringify(enclosingName)})`,
+    EXPLANATION_POLICY,
+    "Explain only the target line; surrounding code is context, not additional scope.",
+    snapshot(lineText, language),
+    `Enclosing code (JSON data): ${JSON.stringify(enclosingCode)}`
+  ].join("\n\n");
 }
 
 export function buildCursorExplainCallFlowPrompt(ctx: SymbolContext): string {
-  const file = path.basename(ctx.filePath);
-  return `/kyc-explain-callflow \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine})`;
+  return symbolPrompt("kyc-explain-callflow", ctx);
 }
 
 export function buildCursorSuggestTestsPrompt(ctx: SymbolContext): string {
-  const file = path.basename(ctx.filePath);
-  return `/kyc-suggest-tests \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine})`;
+  return symbolPrompt("kyc-suggest-tests", ctx);
 }
 
 export function buildCursorExplainWithCalleesPrompt(ctx: SymbolContext): string {
-  const file = path.basename(ctx.filePath);
-  const calleeNames = ctx.callees.slice(0, 8).map((c) => c.name).join(", ");
-  return `/kyc-explain-with-callees \`${ctx.symbolName}\` in \`${file}\` (lines ${ctx.range.startLine}–${ctx.range.endLine})${calleeNames ? ` — callees: ${calleeNames}` : ""}`;
+  return buildCursorExplainCallFlowPrompt(ctx);
 }
 
 export function buildCursorContextActionPrompt(
-  actionId: string,
+  _actionId: string,
   context: KycInteractionContext
 ): string {
-  const file = path.basename(context.filePath);
-  const symbol = context.symbolContext?.symbolName;
-  const ref = symbol ? `\`${symbol}\` in \`${file}\`` : `selected code in \`${file}\``;
-
-  return `/kyc-explain-selected ${ref}`;
+  const enclosing = context.enclosingFunction ?? context.symbolContext;
+  const range = context.sourceRange;
+  return [
+    `/kyc-explain-selected in ${JSON.stringify(context.filePath)}`,
+    range
+      ? `Selection (1-based lines and columns; end exclusive): ${JSON.stringify(range)}`
+      : `Starts at line ${context.anchorLine + 1}`,
+    enclosing ? `Enclosing function: ${JSON.stringify(enclosing.symbolName)}` : "",
+    "Explain precisely the target selection; surrounding code only clarifies it.",
+    EXPLANATION_POLICY,
+    snapshot(context.code, context.language)
+  ].filter(Boolean).join("\n\n");
 }

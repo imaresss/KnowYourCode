@@ -20,6 +20,8 @@ export interface KycInteractionContext {
   dependencyHash: string;
   displayName: string;
   anchorLine: number;
+  /** One-based coordinates; end is exclusive, matching the editor selection. */
+  sourceRange?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
   symbolContext?: SymbolContext;
   selectionKind?: SelectionKind;
   /** Always set when the selection/cursor is inside a function, regardless of selectionKind. */
@@ -33,8 +35,8 @@ export async function resolveInteractionContext(
   const selection = editor.selection;
 
   if (!selection.isEmpty) {
-    const code = document.getText(selection).trim();
-    if (!code) {
+    const code = document.getText(selection);
+    if (!code.trim()) {
       return undefined;
     }
 
@@ -58,6 +60,10 @@ export async function resolveInteractionContext(
         ? enclosing.symbolName
         : `Selection (${Math.max(1, endLine - startLine + 1)} line${endLine === startLine ? "" : "s"})`,
       anchorLine: selection.start.line,
+      sourceRange: {
+        startLine, startColumn: selection.start.character + 1,
+        endLine, endColumn: selection.end.character + 1
+      },
       symbolContext: selectionKind === "fullFunction" ? enclosing ?? undefined : undefined,
       selectionKind,
       enclosingFunction: enclosing ?? undefined

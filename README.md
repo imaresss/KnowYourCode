@@ -70,13 +70,13 @@ KYC ships with four purpose-built skills that tune how explanations and test sug
 
 **When to use:** You want to understand what a function does.
 
-The skill silently assesses the function's complexity — line count, branching depth, external calls — and adapts the output:
+The skill silently assesses the function's complexity — branching, concurrency, transactions, retries, mutations, and error handling; line count is secondary — and adapts the output:
 
 | Complexity | Output |
 |------------|--------|
-| **Simple** (< 15 lines, no deep branches) | 2–3 sentence plain prose. No headers, no lists. |
-| **Medium** (15–50 lines or moderate branching) | Three short paragraphs: *What it does*, *How it works*, *Worth knowing*. |
-| **Complex** (> 50 lines or heavy branching/external calls) | Full sectioned walkthrough with logical block breakdown and key logic paths. |
+| **Simple** (little behavioral complexity) | 2–3 sentence plain prose. No headers, no lists. |
+| **Medium** (moderate behavioral complexity) | Three short paragraphs: *What it does*, *How it works*, *Worth knowing*. |
+| **Complex** (concurrency, consequential effects, or complex control flow) | Full sectioned walkthrough with logical block breakdown and key logic paths. |
 
 No Inputs/Outputs/Dependencies clutter. No parameter type lists. Just the explanation scaled to the function's actual complexity.
 
@@ -88,7 +88,7 @@ No Inputs/Outputs/Dependencies clutter. No parameter type lists. Just the explan
 
 The skill runs a two-pass analysis:
 
-1. **Silent classification** — every call in the function is classified as *signal* (real business logic delegation) or *noise* (getters, logging, stdlib formatting, fluent builders). Only signal calls are explained.
+1. **Silent classification** — every call in the function is classified as *signal* (real business logic delegation) or *noise* (getters, logging, stdlib formatting, fluent builders). Calls are filtered by behavior, with important implementations inspected when available. Accessors, callbacks, and assertions remain visible when they affect I/O, state, or failures.
 2. **Structured explanation** — each meaningful callee is explained: what it does, what data flows to/from it, and why it's called at that point.
 
 If there are 3+ significant callees or conditional branching controls which callees are invoked, the skill draws a **Mermaid sequence diagram** automatically.
@@ -98,7 +98,7 @@ If there are 3+ significant callees or conditional branching controls which call
 - External I/O: HTTP clients, DB drivers, message queues, cache clients
 - Same-class business methods: `process*`, `save*`, `validate*`, `send*`, `fetch*`, etc.
 
-**What gets filtered out:**
+**Usually compressed when behaviorally trivial:**
 - `getX()`, `isX()`, `hasX()` on data objects
 - `.toString()`, `.isEmpty()`, `.size()`, `.contains()`
 - `log.*()`, `System.out.*()`, `console.log()`
@@ -110,7 +110,7 @@ If there are 3+ significant callees or conditional branching controls which call
 
 **When to use:** You've highlighted a line or a block and want to understand it — especially if you're new to the language.
 
-The explanation always has two sections:
+The explanation has a main section and an optional concepts section:
 
 **Section 1 — What this code does**  
 Plain prose. What the selected code accomplishes and why it exists. No jargon, no type signatures.
@@ -118,7 +118,7 @@ Plain prose. What the selected code accomplishes and why it exists. No jargon, n
 **Section 2 — Language concepts used here**  
 Non-trivial stdlib and language-specific calls explained in context: `map`, `filter`, `reduce`, `Optional.orElse()`, `CompletableFuture`, regex, date arithmetic, destructuring, null-coalescing operators, and more.
 
-Trivial operations are always skipped (getters, basic arithmetic, logging, plain assignments). Concepts already explained earlier in the same chat are never repeated.
+Trivial operations are usually skipped unless they affect behavior. Concepts are deduplicated against available chat history, with repetition allowed when requested. The exact selected text and coordinates are preserved in handoff prompts.
 
 ---
 
@@ -131,9 +131,10 @@ The skill silently analyzes:
 - Branches and error paths
 - External dependencies that need mocks or stubs
 - Function shape, such as pure mapper, constructor, async workflow, or side-effecting service method
-- The likely language and test framework from local file names, imports, annotations, and nearby test conventions
+- Existing coverage and framework evidence from project configuration and nearby tests
+- Missing scenarios prioritized by risk, with unit versus integration scope
 
-The output is a structured plan, not test code. It groups named cases into **Happy path**, **Edge & boundary**, **Error cases**, and **Mocking notes**, with each case showing:
+The output is a structured plan, not test code. It groups named cases into **Happy path**, **Edge & boundary**, **Error cases**, and **Mocking notes**, with each case showing its test level and risk priority, plus:
 
 - **When:** the condition being tested
 - **Arrange:** what to set up
@@ -215,7 +216,7 @@ Each skill follows the same philosophy:
 
 - **Silent pre-processing** — complexity rating, call classification, and deduplication checks happen without polluting the response.
 - **Adaptive output** — the format matches the actual complexity of the code, not a fixed template.
-- **Language-aware** — all four skills infer the programming language and adapt idiom explanations or test-plan guidance accordingly. Java verbosity is accounted for in complexity scoring, and test suggestions adapt to common language/framework conventions.
+- **Language-aware** — all four skills infer the programming language and adapt idiom explanations or test-plan guidance accordingly. Behavioral complexity determines explanation depth, and test suggestions follow verified repository conventions.
 - **No noise** — trivial getters, logging calls, basic arithmetic, and already-explained concepts are filtered before the response is written.
 
 ---
@@ -257,7 +258,7 @@ Editor (code lens click)
         ▼
 KYC Extension
   ├─ Resolves function / selection context via VS Code LSP
-  ├─ Builds minimal skill trigger prompt
+  ├─ Builds skill prompt with target snapshot and source location
   └─ Hands off to available AI chat target
         │
         ▼
@@ -309,3 +310,7 @@ src/
 ## License
 
 MIT © [CodeVibe IT](https://github.com/imaresss/KnowYourCode)
+
+## Skill validation
+
+`npm test` checks bundled skill metadata, prompt-to-skill mappings, exact selection snapshots, duplicate filenames, and standalone rendering alongside the existing suite. Behavioral model-evaluation cases and their rubric are in [tests/skill-evaluations.md](tests/skill-evaluations.md); those require a separate model run and are not graded by the automated suite.

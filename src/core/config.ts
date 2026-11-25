@@ -60,7 +60,7 @@ export function getConfig(): ExtensionConfig {
     cacheTtlSeconds: Math.max(0, ws.get<number>("cacheTtlSeconds", 0)),
     inlineActionsEnabled: ws.get<boolean>("inlineActionsEnabled", true),
     selectionDebounceMs: Math.max(0, ws.get<number>("selectionDebounceMs", 250)),
-    promptVersion: "v2",
+    promptVersion: "v3",
     cursorHandoff,
     incremental: {
       enabled: ws.get<boolean>("incremental.enabled", true),

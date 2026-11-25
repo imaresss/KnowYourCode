@@ -1,3 +1,4 @@
+import { EXPLANATION_POLICY } from "../core/explanationPolicy";
 import { KycInteractionContext } from "./interactionContext";
 
 export type KycActionId =
@@ -95,6 +96,7 @@ export function buildContextActionPrompt(actionId: KycActionId, context: KycInte
     : `Current ${context.scope}`;
 
   const promptHeader = [
+    EXPLANATION_POLICY,
     "You are Know Your Code, an expert code intelligence assistant inside VS Code.",
     "Respond in concise, developer-friendly markdown.",
     "Respect the provided scope exactly. Do not assume code outside the selection unless explicitly included in the context.",

@@ -1,16 +1,18 @@
+import { EXPLANATION_POLICY, FUNCTION_GUIDANCE, CALL_FLOW_GUIDANCE } from "../core/explanationPolicy";
 import { DiffAnalysis, ExplainCallFlowInput, ExplainFunctionInput, ExplainFunctionResult, ExplainLineInput } from "../core/types";
 
 export function buildExplainFunctionPrompt(input: ExplainFunctionInput): string {
   return [
     SYSTEM_PREAMBLE,
+    FUNCTION_GUIDANCE,
     "",
     "Return a JSON object with EXACTLY these keys:",
     '  "summary": brief one-line summary of what this function does',
-    '  "purpose": why this code exists and what problem it solves (2-3 sentences)',
+    '  "purpose": evidence-backed purpose; qualify inferred intent; keep simple functions brief',
     '  "stepByStep": array of strings, each explaining one logical step in the function (beginner-friendly)',
-    '  "inputs": array describing each parameter/input and its purpose',
-    '  "outputs": array describing return values and side effects',
-    '  "dependencies": array of external functions, modules, or APIs this code relies on',
+    '  "inputs": empty array; integrate any essential input behavior into purpose or stepByStep instead of listing parameters',
+    '  "outputs": empty array; explain relevant returns, failures, and side effects in stepByStep',
+    '  "dependencies": empty array; explain consequential dependency behavior in stepByStep, not an inventory',
     "",
     "IMPORTANT GUIDELINES:",
     "- stepByStep should be understandable by a junior developer who has never seen this code",
@@ -54,6 +56,8 @@ export function buildExplainLinePrompt(input: ExplainLineInput): string {
   return [
     SYSTEM_PREAMBLE,
     "",
+    "Explain only the target line; enclosing code clarifies scope. Include essential types, mutation, lazy evaluation, equality, null handling, or async callback traps only when relevant.",
+    "Deduplicate concepts only against available history, and repeat them if explicitly requested.",
     "You are explaining a SINGLE LINE of code within a function.",
     "",
     "Return a JSON object with EXACTLY these keys:",
@@ -82,6 +86,7 @@ export function buildExplainCallFlowPrompt(input: ExplainCallFlowInput): string 
   return [
     SYSTEM_PREAMBLE,
     "",
+    CALL_FLOW_GUIDANCE,
     "You are explaining the CALL FLOW — how execution moves through this function and its connections.",
     "",
     "Return a JSON object with EXACTLY these keys:",
@@ -99,12 +104,12 @@ export function buildExplainCallFlowPrompt(input: ExplainCallFlowInput): string 
     "",
     "Callers:",
     ...(input.callers.length
-      ? input.callers.map((c) => `  - ${c.name}${c.signature ? ` | ${c.signature}` : ""}${c.snippet ? `\n    ${c.snippet.split("\n")[0]}` : ""}`)
+      ? input.callers.map((c) => `  - ${c.name}${c.signature ? ` | ${c.signature}` : ""}${c.snippet ? `\n    ${c.snippet}` : ""}`)
       : ["  (no callers detected)"]),
     "",
     "Callees:",
     ...(input.callees.length
-      ? input.callees.map((c) => `  - ${c.name}${c.signature ? ` | ${c.signature}` : ""}${c.snippet ? `\n    ${c.snippet.split("\n")[0]}` : ""}`)
+      ? input.callees.map((c) => `  - ${c.name}${c.signature ? ` | ${c.signature}` : ""}${c.snippet ? `\n    ${c.snippet}` : ""}`)
       : ["  (no callees detected)"]),
     "",
     "--- FUNCTION CODE ---",
@@ -124,7 +129,9 @@ export function buildIncrementalExplainPrompt(
   const trimmedPrevious = buildTrimmedPrevious(previousResult, diff);
 
   return [
-    "You are a senior code analyst. A function was previously explained. A small edit was made.",
+    SYSTEM_PREAMBLE,
+    FUNCTION_GUIDANCE,
+    "A function was previously explained. A small edit was made.",
     changeDescription,
     "",
     "CRITICAL RULES:",
@@ -145,7 +152,9 @@ export function buildIncrementalExplainPrompt(
     JSON.stringify(trimmedPrevious),
     "",
     "DIFF:",
-    diff.unifiedDiff
+    diff.unifiedDiff,
+    "CURRENT FUNCTION CODE:",
+    input.code
   ].join("\n");
 }
 
@@ -191,6 +200,7 @@ function buildTrimmedPrevious(
 }
 
 const SYSTEM_PREAMBLE = [
+  EXPLANATION_POLICY,
   "You are a senior code analyst explaining code to developers of all experience levels.",
   "Your explanations must be:",
   "  1. Accurate and technically precise",
