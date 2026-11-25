@@ -8,11 +8,13 @@ function snapshot(code: string, language: string): string {
 }
 
 function symbolPrompt(skill: string, ctx: SymbolContext): string {
-  return [
-    `/${skill} ${JSON.stringify(ctx.symbolName)} in ${JSON.stringify(ctx.filePath)} (lines ${ctx.range.startLine}–${ctx.range.endLine})`,
-    EXPLANATION_POLICY,
-    snapshot(ctx.code, ctx.language)
-  ].join("\n\n");
+  // Installed skills supply the explanation rules and read the referenced code.
+  // Keep annotation handoffs compact while retaining an unambiguous file path.
+  return `/${skill} ${inlineReference(ctx.symbolName)} in ${inlineReference(ctx.filePath)} (lines ${ctx.range.startLine}–${ctx.range.endLine})`;
+}
+
+function inlineReference(value: string): string {
+  return /[`\r\n]/.test(value) ? JSON.stringify(value) : `\`${value}\``;
 }
 
 export function buildCursorExplainFunctionPrompt(ctx: SymbolContext): string {

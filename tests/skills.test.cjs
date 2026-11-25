@@ -58,19 +58,33 @@ test("every bundled skill has valid matching metadata", () => {
   assert.throws(() => metadata("---\nname: broken\ndescription: example\n"));
 });
 
-test("all handoff builders target installed skills and preserve supplied source", () => {
+test("function annotation handoffs are single-line references to installed skills", () => {
   for (const fixture of fixtures) {
     const ctx = context(fixture);
     for (const builder of [prompts.buildCursorExplainFunctionPrompt, prompts.buildCursorExplainCallFlowPrompt,
       prompts.buildCursorSuggestTestsPrompt, prompts.buildCursorExplainWithCalleesPrompt]) {
       const prompt = builder(ctx);
       assertInstalled(prompt);
-      assert.deepEqual(targetSnapshot(prompt), { language: ctx.language, code: fixture.code });
+      assert.equal(prompt.split("\n").length, 1);
+      assert.ok(prompt.includes(`\`${ctx.symbolName}\` in \`${ctx.filePath}\` (lines 1–2)`));
+      assert.ok(!prompt.includes(fixture.code));
+      assert.doesNotMatch(prompt, /Target snapshot|Read the target code/);
     }
     const line = prompts.buildCursorExplainLinePrompt(ctx.filePath, ctx.language, fixture.code, 12, "outer", "surrounding code");
     assertInstalled(line);
     assert.equal(targetSnapshot(line).code, fixture.code);
   }
+});
+
+test("function reference preserves the annotation signature and line range", () => {
+  const ctx = {
+    ...context(fixtures[0]),
+    symbolName: "verifyPhoneOtp(VerifyPhoneOtpRequest, HttpServletRequest, HttpServletResponse)",
+    filePath: "/workspace/app/WebUserController.java",
+    range: { startLine: 254, endLine: 302 }
+  };
+  assert.equal(prompts.buildCursorExplainFunctionPrompt(ctx),
+    "/kyc-explain-function `verifyPhoneOtp(VerifyPhoneOtpRequest, HttpServletRequest, HttpServletResponse)` in `/workspace/app/WebUserController.java` (lines 254–302)");
 });
 
 test("duplicate basenames retain distinguishable workspace paths", () => {
