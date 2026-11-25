@@ -1,0 +1,40 @@
+[
+  {
+    "id": "async-failure",
+    "filePath": "/workspace/app/src/save.ts",
+    "code": "async function save(value) { try { await store.write(value); return true; } catch { return false; } finally { release(); } }",
+    "mustExplain": ["Waits for write", "Write rejection becomes false", "release runs after success or failure", "A release exception can override the return"],
+    "mustNotClaim": ["All failures are swallowed", "Failed writes are rolled back"]
+  },
+  {
+    "id": "callback-effects",
+    "filePath": "/workspace/app/src/send.ts",
+    "code": "async function send(items) { return Promise.all(items.map(item => client.send(item))); }",
+    "mustExplain": ["map invokes client.send", "Operations can overlap", "Promise.all rejects on a rejected send", "Rejection does not cancel other sends"],
+    "mustNotClaim": ["map is noise", "Sends are sequential", "Automatic retry or cancellation"]
+  },
+  {
+    "id": "duplicate-filenames",
+    "filePath": "/workspace/app/src/admin/index.ts",
+    "otherFilePath": "/workspace/app/src/public/index.ts",
+    "code": "function allowed(user) { return user.role === 'admin'; }",
+    "mustExplain": ["Checks equality with admin", "Uses the supplied admin file target"],
+    "mustNotClaim": ["Checks another index.ts", "Enforces authorization across the application"]
+  },
+  {
+    "id": "partial-selection",
+    "filePath": "/workspace/app/src/format.ts",
+    "code": "  value?.trim() ?? `unknown`\n",
+    "sourceRange": {"startLine": 12, "startColumn": 3, "endLine": 13, "endColumn": 1},
+    "mustExplain": ["Optional call chain", "Nullish fallback", "Empty string does not use the fallback"],
+    "mustNotClaim": ["Explains the whole enclosing function", "Every falsy value becomes unknown"]
+  },
+  {
+    "id": "simple-function",
+    "filePath": "/workspace/app/src/double.ts",
+    "code": "function double(value: number) { return value * 2; }",
+    "existingTest": "assert.equal(double(3), 6); assert.equal(double(0), 0); assert.equal(double(-2), -4);",
+    "mustExplain": ["Returns twice the value", "Brief explanation", "Test suggestions acknowledge supplied existing coverage"],
+    "mustNotClaim": ["External side effects", "Mandatory four happy-path tests", "Framework detected from assert alone"]
+  }
+]
